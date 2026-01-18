@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, FlatList, StyleSheet, TouchableOpacity, useWindowDimensions, TextInput, Modal, Button, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, useWindowDimensions, TextInput, Modal, Button, Platform, ActivityIndicator } from 'react-native';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,9 +8,8 @@ import { useApp } from '../../context/AppContext';
 import { Item } from '../../types';
 import EditItemModal from '../../components/EditItemModal';
 import { Card } from '../../components/ui/Card';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
-import { ThemedView } from '../../components/themed-view';
-import { ThemedText } from '../../components/themed-text';
+import { SurfaceCard } from '../../components/ui/SurfaceCard';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, Layout, Forms } from '../../constants/theme';
 
 export default function FridgeScreen() {
   const router = useRouter();
@@ -21,6 +20,7 @@ export default function FridgeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortMode, setSortMode] = useState<'expiry' | 'az' | 'category'>('expiry');
 
+  // Consume Modal State
   const [consumeModalVisible, setConsumeModalVisible] = useState(false);
   const [consumeAmount, setConsumeAmount] = useState('');
   const [activeItem, setActiveItem] = useState<Item | null>(null);
@@ -31,10 +31,14 @@ export default function FridgeScreen() {
   const isWeb = Platform.OS === 'web';
 
   // --- GRID CALCULATION ---
-  const numColumns = width > 1200 ? 4 : width > 800 ? 3 : width > 600 ? 2 : 1;
-  const gap = Spacing.l;
-  const screenPadding = Spacing.l;
-  const availableWidth = width - (screenPadding * 2) - ((numColumns - 1) * gap);
+  const shellWidth = Math.min(width - Spacing.xl * 2, Layout.pageMaxWidth);
+  const isWide = width >= 1024;
+  const sidePanelWidth = isWide ? 320 : shellWidth;
+  const listWidth = isWide ? shellWidth - sidePanelWidth - Spacing.xl : shellWidth;
+  const listPadding = Spacing.s;
+  const numColumns = listWidth > 1024 ? 3 : listWidth > 700 ? 2 : 1;
+  const gap = Spacing.m;
+  const availableWidth = listWidth - ((numColumns - 1) * gap) - (listPadding * 2);
   const cardWidth = availableWidth / numColumns;
 
   const openDiscardModal = (item: Item) => {
@@ -46,6 +50,7 @@ export default function FridgeScreen() {
     setDiscardModalVisible(true);
   };
 
+  // Filter & Sort Logic
   const filteredItems = useMemo(() => {
     let items = fridgeItems.filter(i => !i.isUsed);
     if (searchQuery) {
@@ -72,8 +77,8 @@ export default function FridgeScreen() {
         close();
       }}
     >
-      <MaterialCommunityIcons name="trash-can-outline" size={28} color="white" />
-      <ThemedText style={styles.actionText}>Bin</ThemedText>
+      <MaterialCommunityIcons name="trash-can-outline" size={24} color="white" />
+      <Text style={styles.actionText}>Bin</Text>
     </TouchableOpacity>
   );
 
@@ -82,10 +87,16 @@ export default function FridgeScreen() {
       style={styles.finishAction}
       onPress={() => { removeFromFridge(item.id, 0); close(); }}
     >
-      <MaterialCommunityIcons name="check-circle-outline" size={28} color="white" />
-      <ThemedText style={styles.actionText}>Finish</ThemedText>
+      <MaterialCommunityIcons name="check-circle-outline" size={24} color="white" />
+      <Text style={styles.actionText}>Finish</Text>
     </TouchableOpacity>
   );
+
+  const handlePartialEat = (item: Item) => {
+    setActiveItem(item);
+    setConsumeAmount('');
+    setConsumeModalVisible(true);
+  };
 
   const confirmConsume = () => {
     if (activeItem && consumeAmount) {
@@ -118,198 +129,224 @@ export default function FridgeScreen() {
       : null;
     const isExpired = daysLeft !== null && daysLeft < 0;
     const isExpiringSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3;
-
+    const timeProgress = daysLeft === null ? 0 : Math.max(0, Math.min(1, daysLeft / 14));
     const timeColor = daysLeft === null
-      ? Colors.light.textMuted
+      ? Colors.light.textSecondary
       : isExpired
         ? Colors.light.danger
         : isExpiringSoon
           ? Colors.light.warning
           : Colors.light.success;
-
     const initial = item.initialQuantity || item.quantity;
     const qtyProgress = Math.max(0, Math.min(1, item.quantity / initial));
+    const qtyColor = Colors.light.tint;
 
     return (
-      <ThemedView style={styles.cardInternal}>
-        <ThemedView style={styles.cardTopSection}>
-          <ThemedView style={[styles.statusBadge, { backgroundColor: timeColor + '20' }]}>
-            <ThemedText style={[styles.statusText, { color: timeColor }]}>
-              {daysLeft === null ? 'Stable' : isExpired ? 'Expired' : `${daysLeft}d left`}
-            </ThemedText>
-          </ThemedView>
-          <ThemedText style={styles.categoryEmoji}>
-            {item.category === 'Dairy' ? '🥛' : item.category === 'Meat' ? '🥩' : item.category === 'Produce' ? '🥦' : '📦'}
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedView style={styles.cardMainSection}>
-          <ThemedText type="defaultSemiBold" numberOfLines={1} style={styles.itemName}>
-            {item.name}
-          </ThemedText>
-          <ThemedText style={styles.priceLabel}>
-            {item.purchasePrice > 0 ? `$${(item.purchasePrice * item.quantity).toFixed(2)}` : 'No price'}
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedView style={styles.cardBottomSection}>
-          <ThemedView style={styles.qtyLabelRow}>
-            <ThemedText style={styles.qtyValue}>{item.quantity} {item.unit}</ThemedText>
-            <ThemedText style={styles.qtyPercent}>{Math.round(qtyProgress * 100)}%</ThemedText>
-          </ThemedView>
-          <Slider
-            style={styles.qtySlider}
-            minimumValue={0}
-            maximumValue={100}
-            step={5}
-            value={qtyProgress * 100}
-            onValueChange={(value) => {
-              const nextQty = Number(((value / 100) * initial).toFixed(2));
-              updateFridgeItem({ ...item, quantity: nextQty });
-            }}
-            minimumTrackTintColor={Colors.light.tint}
-            maximumTrackTintColor={Colors.light.border}
-            thumbTintColor={Colors.light.tint}
-          />
-        </ThemedView>
-      </ThemedView>
+      <View style={styles.cardContent}>
+        <View style={styles.cardHeader}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.categoryEmoji}>
+              {item.category === 'Dairy' ? '🥛' : item.category === 'Meat' ? '🥩' : item.category === 'Produce' ? '🥬' : '📦'}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', flex: 1 }}>
+            <Text style={[styles.daysText, { color: timeColor }]}>
+              {daysLeft === null ? 'No expiry' : isExpired ? 'Expired' : `${daysLeft} days`}
+            </Text>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${timeProgress * 100}%`, backgroundColor: timeColor }]} />
+            </View>
+          </View>
+        </View>
+        <View style={styles.cardBody}>
+          <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.categoryText}>{item.category}</Text>
+          {item.purchasePrice > 0 ? (
+            <Text style={styles.priceText}>${(item.purchasePrice * item.quantity).toFixed(2)}</Text>
+          ) : (
+            <Text style={styles.estimateMissing}>No estimate</Text>
+          )}
+          <View style={styles.qtyContainer}>
+            <Text style={Typography.caption}>
+              {item.quantity} / {initial} {item.unit}
+            </Text>
+              <Slider
+                style={styles.qtySlider}
+                minimumValue={0}
+                maximumValue={100}
+                step={5}
+                value={qtyProgress * 100}
+                onValueChange={(value) => {
+                  const nextQty = Number(((value / 100) * initial).toFixed(2));
+                  updateFridgeItem({ ...item, quantity: nextQty });
+                }}
+                minimumTrackTintColor={qtyColor}
+                maximumTrackTintColor={Colors.light.background}
+                thumbTintColor={qtyColor}
+              />
+          </View>
+        </View>
+      </View>
     );
   };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemedView style={styles.container}>
-        {/* Header */}
-        <ThemedView style={styles.header}>
-          <ThemedView style={{ backgroundColor: 'transparent' }}>
-            <ThemedText type="title">Fridge</ThemedText>
-            <ThemedText style={styles.subtitle}>{filteredItems.length} items currently stored</ThemedText>
-          </ThemedView>
-          <TouchableOpacity onPress={() => router.push('/add')} style={styles.fab}>
-            <MaterialCommunityIcons name="plus" size={32} color="white" />
-          </TouchableOpacity>
-        </ThemedView>
+      <View style={styles.container}>
+        <View style={[styles.shell, { width: shellWidth }, isWide && styles.shellWide]}>
+          <View style={[styles.sidePanel, { width: sidePanelWidth }]}>
+            <SurfaceCard style={styles.headerCard} variant="soft">
+              <View style={styles.headerRow}>
+                <View style={styles.headerText}>
+                  <Text style={styles.pageTitle}>My Fridge</Text>
+                  <Text style={styles.pageSubtitle}>Track what you have and keep spoilage low.</Text>
+                </View>
+                <TouchableOpacity onPress={() => router.push('/add')} style={styles.addButton}>
+                  <MaterialCommunityIcons name="plus" size={24} color="white" />
+                </TouchableOpacity>
+              </View>
+            </SurfaceCard>
 
-        {/* Search & Filters */}
-        <ThemedView style={styles.filterSection}>
-          <ThemedView style={styles.searchBar}>
-            <MaterialCommunityIcons name="magnify" size={22} color={Colors.light.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search pantry..."
-              placeholderTextColor={Colors.light.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </ThemedView>
-
-          <ThemedView style={styles.pillContainer}>
-            {(['expiry', 'az', 'category'] as const).map((mode) => (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.pill, sortMode === mode && styles.pillActive]}
-                onPress={() => setSortMode(mode)}
-              >
-                <ThemedText style={[styles.pillText, sortMode === mode && styles.pillTextActive]}>
-                  {mode === 'expiry' ? 'Expiry' : mode === 'az' ? 'A-Z' : 'Type'}
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
-          </ThemedView>
-        </ThemedView>
-
-        <FlatList
-          key={numColumns}
-          numColumns={numColumns}
-          data={filteredItems}
-          keyExtractor={i => i.id}
-          contentContainerStyle={styles.listContent}
-          columnWrapperStyle={numColumns > 1 ? { gap: gap } : undefined}
-          ListEmptyComponent={
-            fridgeLoading ? (
-              <ThemedView style={styles.centerState}>
-                <ActivityIndicator size="large" color={Colors.light.tint} />
-              </ThemedView>
-            ) : (
-              <ThemedView style={styles.centerState}>
-                <MaterialCommunityIcons name="fridge-off-outline" size={64} color={Colors.light.border} />
-                <ThemedText style={styles.emptyText}>Your fridge is empty</ThemedText>
-              </ThemedView>
-            )
-          }
-          renderItem={({ item }) => {
-            let swipeableRef: Swipeable | null = null;
-            const close = () => swipeableRef?.close();
-
-            const CardWrapper = (
-              <Card
-                variant="elevated"
-                onLongPress={() => setEditItem(item)}
-                style={[styles.card, { width: numColumns > 1 ? cardWidth : '100%' }]}
-              >
-                {renderCardContent(item)}
-                {isWeb && (
-                  <ThemedView style={styles.webActionOverlay}>
-                    <TouchableOpacity style={styles.webActionBtn} onPress={() => removeFromFridge(item.id, 0)}>
-                      <MaterialCommunityIcons name="check" size={18} color={Colors.light.success} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.webActionBtn} onPress={() => openDiscardModal(item)}>
-                      <MaterialCommunityIcons name="trash-can-outline" size={18} color={Colors.light.danger} />
-                    </TouchableOpacity>
-                  </ThemedView>
-                )}
-              </Card>
-            );
-
-            if (isWeb) return CardWrapper;
-
-            return (
-              <Swipeable
-                ref={ref => swipeableRef = ref}
-                renderRightActions={() => renderRightActions(item, close)}
-                renderLeftActions={() => renderLeftActions(item, close)}
-                containerStyle={{ marginBottom: Spacing.m }}
-              >
-                {CardWrapper}
-              </Swipeable>
-            );
-          }}
-        />
-
-        {/* Re-using your existing modals but with improved layout inside */}
-        <Modal visible={consumeModalVisible} transparent animationType="slide">
-          <ThemedView style={styles.modalBackdrop}>
-            <ThemedView style={styles.bottomSheet}>
-              <ThemedText type="subtitle">How much {activeItem?.name}?</ThemedText>
-              <ThemedView style={styles.modalInputWrapper}>
+            <SurfaceCard style={styles.filterCard}>
+              <View style={styles.searchContainer}>
+                <MaterialCommunityIcons name="magnify" size={20} color={Colors.light.textMuted} style={{ marginRight: 8 }} />
                 <TextInput
-                  style={styles.hugeInput}
+                  style={styles.searchInput}
+                  placeholder="Search items..."
+                  placeholderTextColor={Colors.light.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              <View style={styles.sortContainer}>
+                <TouchableOpacity
+                  style={[styles.sortBtn, sortMode === 'expiry' && styles.sortBtnActive]}
+                  onPress={() => setSortMode('expiry')}
+                >
+                  <Text style={[styles.sortBtnText, sortMode === 'expiry' && styles.sortBtnTextActive]}>By Expiry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
+                  onPress={() => setSortMode('az')}
+                >
+                  <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sortBtn, sortMode === 'category' && styles.sortBtnActive]}
+                  onPress={() => setSortMode('category')}
+                >
+                  <Text style={[styles.sortBtnText, sortMode === 'category' && styles.sortBtnTextActive]}>Category</Text>
+                </TouchableOpacity>
+              </View>
+            </SurfaceCard>
+          </View>
+
+          <View style={[styles.listPanel, { width: listWidth }]}>
+            <FlatList
+              key={numColumns}
+              numColumns={numColumns}
+              data={filteredItems}
+              keyExtractor={i => i.id}
+              style={styles.list}
+              contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: listPadding }}
+              columnWrapperStyle={numColumns > 1 ? { gap: Spacing.m } : undefined}
+              ListEmptyComponent={
+                fridgeLoading ? (
+                  <View style={styles.loadingState}>
+                    <ActivityIndicator size="large" color={Colors.light.primary} />
+                    <Text style={styles.loadingText}>Loading fridge items...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyState}>
+                    <MaterialCommunityIcons name="fridge-outline" size={64} color={Colors.light.border} />
+                    <Text style={styles.emptyText}>Fridge is empty!</Text>
+                  </View>
+                )
+              }
+              renderItem={({ item }) => {
+                let swipeableRef: Swipeable | null = null;
+                const close = () => swipeableRef?.close();
+
+                const CardBody = (
+                  <Card
+                    variant="elevated"
+                    onLongPress={() => setEditItem(item)}
+                    style={[
+                      styles.cardLayoutOverrides,
+                      { width: numColumns > 1 ? cardWidth : '100%' }
+                    ]}
+                  >
+                    {renderCardContent(item)}
+                    {isWeb && (
+                      <View style={styles.webActions}>
+                        <TouchableOpacity style={[styles.webBtn, styles.btnFinish]} onPress={() => removeFromFridge(item.id, 0)}>
+                          <Text style={styles.webBtnText}>Finish</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.webBtn, styles.btnTrash]}
+                          onPress={() => {
+                            openDiscardModal(item);
+                          }}
+                        >
+                          <Text style={styles.webBtnText}>Bin</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </Card>
+                );
+
+                if (isWeb) return (
+                  <View style={{ width: numColumns > 1 ? cardWidth : '100%', marginBottom: Spacing.m }}>
+                    {CardBody}
+                  </View>
+                );
+
+                return (
+                  <Swipeable
+                    ref={ref => swipeableRef = ref}
+                    renderRightActions={() => renderRightActions(item, close)}
+                    renderLeftActions={() => renderLeftActions(item, close)}
+                    containerStyle={{ width: numColumns > 1 ? cardWidth : '100%', marginBottom: Spacing.m }}
+                  >
+                    {CardBody}
+                  </Swipeable>
+                );
+              }}
+            />
+          </View>
+        </View>
+
+        <Modal visible={consumeModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={Typography.subHeader}>Eat {activeItem?.name}</Text>
+              <Text style={Typography.body}>How much did you use?</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.modalInput}
                   keyboardType="numeric"
                   value={consumeAmount}
                   onChangeText={setConsumeAmount}
                   placeholder="0"
                   autoFocus
                 />
-                <ThemedText type="title">{activeItem?.unit}</ThemedText>
-              </ThemedView>
-              <ThemedView style={styles.modalFooter}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => setConsumeModalVisible(false)}>
-                  <ThemedText style={styles.cancelBtnText}>Cancel</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.confirmBtn} onPress={confirmConsume}>
-                  <ThemedText style={styles.confirmBtnText}>Confirm</ThemedText>
-                </TouchableOpacity>
-              </ThemedView>
-            </ThemedView>
-          </ThemedView>
+                <Text style={Typography.subHeader}>{activeItem?.unit}</Text>
+              </View>
+              <View style={styles.modalButtons}>
+                <Button title="Cancel" color={Colors.light.textMuted} onPress={() => setConsumeModalVisible(false)} />
+                <Button title="Confirm" color={Colors.light.primary} onPress={confirmConsume} />
+              </View>
+            </View>
+          </View>
         </Modal>
 
-        {/* Existing Discard Modal Logic preserved */}
         <Modal visible={discardModalVisible} transparent animationType="fade">
-          <ThemedView style={styles.modalBackdrop}>
-            <ThemedView style={styles.modalCard}>
-              <ThemedText type="subtitle">Discard {discardItem?.name}</ThemedText>
-              <ThemedText style={styles.percentDisplay}>{discardPercent}% wasted</ThemedText>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={Typography.subHeader}>Throw out {discardItem?.name}</Text>
+              <Text style={Typography.body}>How much are you discarding?</Text>
+              <Text style={styles.percentText}>{discardPercent}%</Text>
               <Slider
                 style={{ width: '100%', height: 40 }}
                 minimumValue={0}
@@ -318,110 +355,112 @@ export default function FridgeScreen() {
                 value={discardPercent}
                 onValueChange={setDiscardPercent}
                 minimumTrackTintColor={Colors.light.danger}
+                maximumTrackTintColor={Colors.light.textSecondary}
                 thumbTintColor={Colors.light.danger}
               />
-              <ThemedView style={styles.modalFooter}>
+              <View style={styles.labels}>
+                <Text style={styles.tinyLabel}>0%</Text>
+                <Text style={styles.tinyLabel}>100%</Text>
+              </View>
+              <View style={styles.modalButtons}>
                 <Button title="Cancel" color={Colors.light.textMuted} onPress={() => setDiscardModalVisible(false)} />
-                <Button title="Confirm Waste" color={Colors.light.danger} onPress={confirmDiscard} />
-              </ThemedView>
-            </ThemedView>
-          </ThemedView>
+                <Button title="Confirm" color={Colors.light.danger} onPress={confirmDiscard} />
+              </View>
+            </View>
+          </View>
         </Modal>
 
-        <EditItemModal
-          visible={!!editItem}
-          item={editItem}
-          onClose={() => setEditItem(null)}
-          onSave={(u) => { updateFridgeItem(u); setEditItem(null); }}
-        />
-      </ThemedView>
+        <EditItemModal visible={!!editItem} item={editItem} onClose={() => setEditItem(null)} onSave={(u) => { updateFridgeItem(u); setEditItem(null); }} />
+      </View>
     </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'ios' ? 60 : 40 },
-  header: {
+  container: { flex: 1, backgroundColor: Colors.light.background, paddingVertical: Spacing.xxl, height: '100%' },
+  shell: {
+    alignSelf: 'center',
+    gap: Spacing.xl,
+    flex: 1,
+    width: '100%',
+  },
+  shellWide: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xl,
+  },
+  sidePanel: {
+    gap: Spacing.l,
+  },
+  listPanel: {
+    flex: 1,
+    minHeight: 0,
+    height: '100%',
+  },
+  list: {
+    flex: 1,
+    minHeight: 0,
+  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.l },
+  headerText: { flex: 1, gap: Spacing.xs },
+  pageTitle: { fontSize: 26, fontWeight: '800', color: Colors.light.text },
+  pageSubtitle: { ...Typography.body, color: Colors.light.textSecondary },
+  addButton: { width: 44, height: 44, borderRadius: BorderRadius.circle, backgroundColor: Colors.light.primary, justifyContent: 'center', alignItems: 'center', ...Shadows.default },
+  headerCard: {
+    padding: Layout.cardPadding,
+  },
+  filterCard: {
+    padding: Spacing.l,
+    gap: Spacing.l,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Forms.field,
+  },
+  searchInput: { flex: 1, ...Forms.fieldText },
+  sortContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.m, padding: 4 },
+  sortBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: BorderRadius.s },
+  sortBtnActive: { backgroundColor: Colors.light.card, ...Shadows.soft },
+  sortBtnText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 13 },
+  sortBtnTextActive: { color: Colors.light.text },
+  cardLayoutOverrides: {
+    padding: Spacing.l,
+    minHeight: 170,
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.l,
-    marginBottom: Spacing.m,
-    backgroundColor: 'transparent'
   },
-  subtitle: { ...Typography.caption, marginTop: -4 },
-  fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.light.tint,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Shadows.strong
-  },
-  filterSection: { paddingHorizontal: Spacing.l, gap: Spacing.m, marginBottom: Spacing.l, backgroundColor: 'transparent' },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.light.card,
-    padding: Spacing.m,
-    borderRadius: BorderRadius.l,
-    ...Shadows.soft
-  },
-  searchInput: { flex: 1, marginLeft: Spacing.s, fontSize: 16, color: Colors.light.text },
-  pillContainer: { flexDirection: 'row', gap: Spacing.s, backgroundColor: 'transparent' },
-  pill: {
-    paddingHorizontal: Spacing.l,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.circle,
-    backgroundColor: Colors.light.card,
-    borderWidth: 1,
-    borderColor: Colors.light.border
-  },
-  pillActive: { backgroundColor: Colors.light.tint, borderColor: Colors.light.tint },
-  pillText: { fontSize: 13, fontWeight: '600', color: Colors.light.textSecondary },
-  pillTextActive: { color: 'white' },
-  listContent: { paddingHorizontal: Spacing.l, paddingBottom: 120 },
-  card: {
-    padding: 0,
-    overflow: 'hidden',
-    borderRadius: BorderRadius.xl,
-    marginBottom: 0 // Handled by gap/swipeable
-  },
-  cardInternal: { padding: Spacing.l, backgroundColor: 'transparent' },
-  cardTopSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.s, backgroundColor: 'transparent' },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  statusText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  categoryEmoji: { fontSize: 24 },
-  cardMainSection: { marginBottom: Spacing.m, backgroundColor: 'transparent' },
-  itemName: { fontSize: 18, marginBottom: 2 },
-  priceLabel: { fontSize: 13, color: Colors.light.textMuted },
-  cardBottomSection: { backgroundColor: 'transparent' },
-  qtyLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, backgroundColor: 'transparent' },
-  qtyValue: { fontSize: 14, fontWeight: '700', color: Colors.light.tint },
-  qtyPercent: { fontSize: 12, color: Colors.light.textMuted },
-  qtySlider: { width: '100%', height: 20 },
-  webActionOverlay: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: Colors.light.border + '40',
-    backgroundColor: Colors.light.gray100 + '50'
-  },
-  webActionBtn: { flex: 1, padding: 10, alignItems: 'center', justifyContent: 'center' },
-  deleteAction: { backgroundColor: Colors.light.danger, justifyContent: 'center', alignItems: 'center', width: 90, borderRadius: BorderRadius.xl, marginLeft: Spacing.s },
-  finishAction: { backgroundColor: Colors.light.success, justifyContent: 'center', alignItems: 'center', width: 90, borderRadius: BorderRadius.xl, marginRight: Spacing.s },
-  actionText: { color: 'white', fontSize: 12, fontWeight: '800', marginTop: 4 },
-  centerState: { alignItems: 'center', justifyContent: 'center', marginTop: 100, backgroundColor: 'transparent' },
-  emptyText: { marginTop: Spacing.m, color: Colors.light.textMuted, fontSize: 16 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  bottomSheet: { width: '100%', maxWidth: 500, backgroundColor: Colors.light.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: Spacing.xl, position: 'absolute', bottom: 0 },
-  modalCard: { width: '90%', maxWidth: 400, backgroundColor: Colors.light.card, borderRadius: 24, padding: Spacing.xl, alignItems: 'center' },
-  modalInputWrapper: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginVertical: Spacing.xxl, backgroundColor: 'transparent' },
-  hugeInput: { fontSize: 64, fontWeight: '800', color: Colors.light.tint, textAlign: 'right', minWidth: 120 },
-  modalFooter: { flexDirection: 'row', gap: Spacing.m, marginTop: Spacing.l, width: '100%', backgroundColor: 'transparent' },
-  cancelBtn: { flex: 1, padding: Spacing.l, borderRadius: BorderRadius.m, alignItems: 'center' },
-  confirmBtn: { flex: 2, padding: Spacing.l, backgroundColor: Colors.light.tint, borderRadius: BorderRadius.m, alignItems: 'center' },
-  cancelBtnText: { fontWeight: '700', color: Colors.light.textMuted },
-  confirmBtnText: { fontWeight: '700', color: 'white' },
-  percentDisplay: { fontSize: 48, fontWeight: '800', color: Colors.light.danger, marginVertical: Spacing.l }
+  cardContent: { flex: 1 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.s },
+  cardBody: { flex: 1, justifyContent: 'flex-end' },
+  iconContainer: { width: 40, height: 40, borderRadius: BorderRadius.m, backgroundColor: Colors.light.primaryBg, justifyContent: 'center', alignItems: 'center' },
+  categoryEmoji: { fontSize: 20 },
+  categoryText: { ...Typography.caption, color: Colors.light.textSecondary, marginBottom: Spacing.xs },
+  itemName: { fontSize: 16, fontWeight: '600', color: Colors.light.text, marginBottom: Spacing.xs },
+  priceText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary, marginBottom: Spacing.xs },
+  estimateMissing: { fontSize: 12, color: Colors.light.textMuted, marginBottom: Spacing.xs },
+  qtyContainer: { marginTop: 4 },
+  qtySlider: { width: '100%', height: 20, marginTop: 4 },
+  daysText: { fontSize: 12, fontWeight: '700', marginBottom: 4, textAlign: 'right' },
+  progressBarBg: { width: 64, height: 4, backgroundColor: Colors.light.background, borderRadius: 2, overflow: 'hidden' },
+  progressBarFill: { height: '100%', borderRadius: 2 },
+  deleteAction: { backgroundColor: Colors.light.danger, justifyContent: 'center', alignItems: 'center', width: 80, height: '100%', borderRadius: BorderRadius.l, marginLeft: Spacing.s },
+  finishAction: { backgroundColor: Colors.light.success, justifyContent: 'center', alignItems: 'center', width: 80, height: '100%', borderRadius: BorderRadius.l, marginRight: Spacing.s },
+  actionText: { color: 'white', fontSize: 12, fontWeight: 'bold', marginTop: 4 },
+  webActions: { flexDirection: 'row', gap: Spacing.s, marginTop: Spacing.m, paddingTop: Spacing.m, borderTopWidth: 1, borderTopColor: Colors.light.background },
+  webBtn: { flex: 1, paddingVertical: 8, borderRadius: BorderRadius.s, alignItems: 'center' },
+  btnFinish: { backgroundColor: Colors.light.successBg },
+  btnTrash: { backgroundColor: Colors.light.dangerBg },
+  webBtnText: { fontSize: 12, fontWeight: 'bold', color: Colors.light.text },
+  loadingState: { alignItems: 'center', marginTop: 60 },
+  loadingText: { fontSize: 14, fontWeight: '600', color: Colors.light.textSecondary, marginTop: Spacing.m },
+  emptyState: { alignItems: 'center', marginTop: 60, opacity: 0.5 },
+  emptyText: { fontSize: 18, fontWeight: '600', color: Colors.light.textSecondary, marginTop: Spacing.m },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  modalCard: { width: '80%', maxWidth: 400, backgroundColor: Colors.light.card, borderRadius: BorderRadius.xl, padding: Spacing.xl, alignItems: 'center', ...Shadows.strong },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s, marginVertical: Spacing.l },
+  modalInput: { fontSize: 32, fontWeight: 'bold', borderBottomWidth: 2, borderColor: Colors.light.border, textAlign: 'center', width: 100, color: Colors.light.primary },
+  modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-around' },
+  percentText: { fontSize: 36, fontWeight: 'bold', color: Colors.light.text, marginTop: Spacing.l },
+  labels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: Spacing.s },
+  tinyLabel: { ...Typography.caption, fontSize: 12 }
 });

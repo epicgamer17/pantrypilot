@@ -362,7 +362,9 @@ export default function GroceryScreen() {
             </TouchableOpacity>
             {hasCheckedItems && (
               <TouchableOpacity style={styles.clearButton} onPress={handleClearPurchased}>
-                <Text style={styles.clearButtonText}>Clear purchased</Text>
+                <Text style={styles.clearButtonText} numberOfLines={1}>
+                  Clear bought
+                </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.emailIconButton} onPress={handleReadEmails}>
@@ -686,10 +688,17 @@ export default function GroceryScreen() {
       <Modal visible={moveModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Organize Purchased Items</Text>
-            <Text style={styles.modalSubtitle}>
-              Move selected items to your pantry and remove the rest.
-            </Text>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Purchased items</Text>
+                <Text style={styles.modalSubtitle}>
+                  Move what you bought into your pantry.
+                </Text>
+              </View>
+              <Text style={styles.modalCount}>
+                {selectedPurchasedIds.size}/{purchasedItems.length}
+              </Text>
+            </View>
 
             <View style={styles.selectionActions}>
               <TouchableOpacity
@@ -698,17 +707,17 @@ export default function GroceryScreen() {
                   setSelectedPurchasedIds(new Set(purchasedItems.map((item) => item.id)))
                 }
               >
-                <Text style={styles.selectBtnText}>Select all purchased</Text>
+                <Text style={styles.selectBtnText}>Select all</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.removeAllBtn}
                 onPress={handleRemoveAllPurchased}
               >
-                <Text style={styles.removeAllBtnText}>Clear selection</Text>
+                <Text style={styles.removeAllBtnText}>Clear</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 240, marginTop: Spacing.m }}>
+            <ScrollView style={styles.selectionList}>
               {purchasedItems.map((item) => {
                 const selected = selectedPurchasedIds.has(item.id);
                 return (
@@ -733,7 +742,7 @@ export default function GroceryScreen() {
                 style={styles.cancelBtn}
                 onPress={() => setMoveModalVisible(false)}
               >
-                <Text style={styles.cancelText}>Keep list</Text>
+                <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -741,7 +750,7 @@ export default function GroceryScreen() {
                 ]}
                 onPress={handleMoveSelectedToFridge}
               >
-                <Text style={styles.saveText}>Move selected to pantry</Text>
+                <Text style={styles.saveText}>Move to pantry</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1126,10 +1135,39 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 14, fontWeight: '600', color: Colors.light.textSecondary },
   totalValue: { fontSize: 16, fontWeight: '700', color: Colors.light.text },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
-  modalCard: { backgroundColor: Colors.light.card, borderRadius: BorderRadius.l, padding: 20, ...Shadows.strong },
-  modalTitle: { ...Typography.subHeader, marginBottom: Spacing.m },
-  modalSubtitle: { ...Typography.body, color: Colors.light.textSecondary, marginBottom: Spacing.m },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: Colors.light.card,
+    borderRadius: BorderRadius.l,
+    padding: 20,
+    gap: Spacing.m,
+    ...Shadows.strong,
+  },
+  modalTitle: { ...Typography.subHeader },
+  modalSubtitle: { ...Typography.body, color: Colors.light.textSecondary },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: Spacing.m,
+  },
+  modalCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.light.textSecondary,
+    backgroundColor: Colors.light.secondary,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.m,
+  },
   input: {
     ...Forms.field,
     ...Forms.fieldText,
@@ -1149,12 +1187,26 @@ const styles = StyleSheet.create({
   unitChipActive: { backgroundColor: Colors.light.primary },
   unitChipText: { fontSize: 12, color: Colors.light.textSecondary, fontWeight: '600' },
   unitChipTextActive: { color: 'white' },
-  selectionActions: { flexDirection: 'row', gap: 8, marginTop: Spacing.m },
+  selectionActions: { flexDirection: 'row', gap: 8, marginTop: Spacing.s },
   selectBtn: { flex: 1, paddingVertical: 8, borderRadius: BorderRadius.s, backgroundColor: Colors.light.secondary, alignItems: 'center' },
   selectBtnText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 12 },
   removeAllBtn: { flex: 1, paddingVertical: 8, borderRadius: BorderRadius.s, backgroundColor: Colors.light.dangerBg, alignItems: 'center' },
   removeAllBtnText: { fontWeight: '600', color: Colors.light.danger, fontSize: 12 },
-  selectRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  selectionList: {
+    maxHeight: 260,
+    marginTop: Spacing.s,
+    padding: Spacing.s,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.secondary,
+  },
+  selectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.background,
+  },
   selectRowText: { fontSize: 14, color: Colors.light.text },
 
   editButton: {

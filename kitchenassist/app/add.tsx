@@ -2,7 +2,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
@@ -40,6 +40,25 @@ const CATEGORIES: Category[] = [
 ];
 const UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup'];
 
+const getDefaultExpiryDays = (category: Category) => {
+  switch (category) {
+    case 'Meat':
+      return 4;
+    case 'Produce':
+      return 7;
+    case 'Dairy':
+      return 14;
+    case 'Frozen':
+      return 90;
+    case 'Pantry':
+      return 180;
+    case 'Beverages':
+      return 60;
+    default:
+      return 30;
+  }
+};
+
 export default function AddItemScreen() {
   const router = useRouter();
   const { addToFridge, householdId, userId, refreshData } = useApp();
@@ -55,13 +74,16 @@ export default function AddItemScreen() {
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<Item['unit']>('unit');
   const [category, setCategory] = useState<Category>('Other');
-  const defaultExpiry = new Date(Date.now() + 7 * 86400000);
+  const defaultExpiry = new Date(
+    Date.now() + getDefaultExpiryDays(category) * 86400000,
+  );
   const [expiryDate, setExpiryDate] = useState(defaultExpiry);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [webCalendarVisible, setWebCalendarVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(
     new Date(defaultExpiry.getFullYear(), defaultExpiry.getMonth(), 1),
   );
+  const [expiryTouched, setExpiryTouched] = useState(false);
 
   const handleSubmit = () => {
     if (!name.trim()) {
@@ -162,6 +184,7 @@ export default function AddItemScreen() {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
       setExpiryDate(selectedDate);
+      setExpiryTouched(true);
     }
   };
 
@@ -193,6 +216,15 @@ export default function AddItemScreen() {
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
+
+  useEffect(() => {
+    if (expiryTouched) return;
+    const nextExpiry = new Date(
+      Date.now() + getDefaultExpiryDays(category) * 86400000,
+    );
+    setExpiryDate(nextExpiry);
+    setCalendarMonth(new Date(nextExpiry.getFullYear(), nextExpiry.getMonth(), 1));
+  }, [category, expiryTouched]);
 
   return (
     <KeyboardAvoidingView
@@ -455,6 +487,7 @@ export default function AddItemScreen() {
                           onPress={() => {
                             if (!date) return;
                             setExpiryDate(date);
+                            setExpiryTouched(true);
                             setWebCalendarVisible(false);
                           }}
                         >

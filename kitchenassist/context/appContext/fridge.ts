@@ -39,6 +39,10 @@ export const createFridgeActions = ({
     if (normalized === 'meat') days = 4;
     if (normalized === 'produce') days = 7;
     if (normalized === 'dairy') days = 14;
+    if (normalized === 'frozen') days = 90;
+    if (normalized === 'pantry') days = 180;
+    if (normalized === 'beverages') days = 60;
+    if (normalized === 'other') days = 30;
     if (!days) return '';
     return new Date(Date.now() + days * 86400000).toISOString();
   };

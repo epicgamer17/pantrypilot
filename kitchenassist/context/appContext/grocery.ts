@@ -1,4 +1,5 @@
 import { GroceryItem } from '../../types';
+import { areUnitsCompatible, convertQuantity, normalizeQuantity } from '../../utils/unitConversion';
 
 type HeadersBuilder = (
   includeJson?: boolean,
@@ -18,6 +19,9 @@ type GroceryDeps = {
     name: string,
     category?: string,
   ) => Promise<{ id: string; name?: string; category?: string } | null>;
+  fetchItemsByIds: (
+    ids: string[],
+  ) => Promise<Map<string, { packageQuantity?: number; packageUnit?: string }>>;
   fetchItemPriceLeaders: (
     ids: string[],
   ) => Promise<Map<string, { price: number; storeName?: string; itemName?: string }>>;
@@ -37,10 +41,37 @@ export const createGroceryActions = ({
   resolveShoppingListIdsWithItems,
   dedupeShoppingList,
   ensureItemByName,
+  fetchItemsByIds,
   fetchItemPriceLeaders,
   fetchClosestPriceWithStore,
   apiUrl,
 }: GroceryDeps) => {
+  const getUnitPrice = (
+    packagePrice: number,
+    packageQuantity: number | undefined,
+    packageUnit: string | undefined,
+    recipeQuantity: number | undefined,
+    recipeUnit: string | undefined,
+  ) => {
+    const safeQuantity = Number.isFinite(recipeQuantity) && (recipeQuantity as number) > 0 ? recipeQuantity as number : 1;
+    if (!Number.isFinite(packagePrice) || packagePrice <= 0) return 0;
+    if (!packageQuantity || !packageUnit || !recipeUnit) {
+      return packagePrice / safeQuantity;
+    }
+    if (!areUnitsCompatible(packageUnit, recipeUnit)) {
+      const converted = convertQuantity(1, recipeUnit, packageUnit, 1);
+      if (!Number.isFinite(converted) || !Number.isFinite(packageQuantity) || packageQuantity <= 0) {
+        return packagePrice / safeQuantity;
+      }
+      return (packagePrice / packageQuantity) * converted;
+    }
+    const packageBase = normalizeQuantity(packageQuantity, packageUnit);
+    const unitBase = normalizeQuantity(1, recipeUnit);
+    if (!Number.isFinite(packageBase) || packageBase <= 0 || !Number.isFinite(unitBase)) {
+      return packagePrice / safeQuantity;
+    }
+    return (packagePrice / packageBase) * unitBase;
+  };
   const buildShoppingListPayload = (list: GroceryItem[], now: string) =>
     list.map((item) => {
       const purchased = !!(item.purchased ?? item.checked);
@@ -86,12 +117,18 @@ export const createGroceryActions = ({
       }
     }
 
+    const itemDetails = await fetchItemsByIds([resolved.id]);
+    const details = itemDetails.get(resolved.id);
+    const targetPrice = getUnitPrice(estimatedPrice, details?.packageQuantity, details?.packageUnit, 1, 'unit');
+
     const newItem: GroceryItem = {
       id: resolved.id,
       itemId: resolved.id,
       name: resolved.name ?? name,
       aisle: resolved.category ?? category,
-      targetPrice: estimatedPrice,
+      packageQuantity: details?.packageQuantity,
+      packageUnit: details?.packageUnit,
+      targetPrice,
       bestStoreName,
       bestStoreItemName,
       onSale: false,
@@ -139,7 +176,7 @@ export const createGroceryActions = ({
     if (!userId || !householdId || !items.length) return;
     const now = new Date().toISOString();
     const startingList = dedupeShoppingList(groceryList);
-    const additions: GroceryItem[] = [];
+    const additions: (GroceryItem & { packagePrice: number })[] = [];
 
     for (const item of items) {
       const resolved = await ensureItemByName(item.name, item.category);
@@ -176,12 +213,33 @@ export const createGroceryActions = ({
         priority: 'medium',
         addedAt: now,
         fromRecipe: item.fromRecipe,
+        packagePrice: estimatedPrice,
       });
     }
 
+    const detailsById = additions.length
+      ? await fetchItemsByIds(additions.map((item) => item.itemId ?? item.id).filter(Boolean) as string[])
+      : new Map();
+    const additionsWithPrice = additions.map((item) => {
+      const details = detailsById.get(item.itemId ?? item.id);
+      const { packagePrice, ...rest } = item;
+      return {
+        ...rest,
+        targetPrice: getUnitPrice(
+          packagePrice,
+          details?.packageQuantity,
+          details?.packageUnit,
+          item.quantity,
+          item.unit,
+        ),
+        packageQuantity: details?.packageQuantity,
+        packageUnit: details?.packageUnit,
+      };
+    });
+
     const resolvedList = await resolveShoppingListIdsWithItems([
       ...startingList,
-      ...additions,
+      ...additionsWithPrice,
     ]);
     const dedupedList = dedupeShoppingList(resolvedList);
     setGroceryList(dedupedList);

@@ -77,3 +77,41 @@ export const denormalizeQuantity = (qty: number, unit: string): number => {
     // DISCRETE -> Base: Unit
     return qty;
 };
+
+// 5. Convert between units, including mass <-> volume using density (g/ml).
+export const convertQuantity = (
+    qty: number,
+    fromUnit: string,
+    toUnit: string,
+    density = 1,
+): number | null => {
+    if (!fromUnit || !toUnit) return null;
+    const from = fromUnit.toLowerCase().trim();
+    const to = toUnit.toLowerCase().trim();
+    if (from === to) return qty;
+
+    const fromType = getUnitType(from);
+    const toType = getUnitType(to);
+    if (fromType === 'unknown' || toType === 'unknown') return null;
+
+    if (fromType === toType) {
+        const base = normalizeQuantity(qty, from);
+        return denormalizeQuantity(base, to);
+    }
+
+    if (density <= 0) return null;
+
+    if (fromType === 'mass' && toType === 'volume') {
+        const grams = normalizeQuantity(qty, from);
+        const ml = grams / density;
+        return denormalizeQuantity(ml, to);
+    }
+
+    if (fromType === 'volume' && toType === 'mass') {
+        const ml = normalizeQuantity(qty, from);
+        const grams = ml * density;
+        return denormalizeQuantity(grams, to);
+    }
+
+    return null;
+};

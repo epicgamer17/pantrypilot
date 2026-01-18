@@ -27,6 +27,7 @@ import {
     isValidObjectId,
     normalizeObjectId,
 } from './appContext/utils';
+import { areUnitsCompatible, convertQuantity, normalizeQuantity } from '../utils/unitConversion';
 
 // Adjust localhost for Android Emulator (10.0.2.2) vs iOS/Web (localhost)
 const API_URL =
@@ -58,6 +59,36 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const [recentlyDepletedItems, setRecentlyDepletedItems] = useState<Item[]>(
         [],
     );
+
+    const getUnitPrice = (
+        packagePrice: number,
+        packageQuantity: number | undefined,
+        packageUnit: string | undefined,
+        recipeQuantity: number | undefined,
+        recipeUnit: string | undefined,
+    ) => {
+        const safeQuantity =
+            Number.isFinite(recipeQuantity) && (recipeQuantity as number) > 0
+                ? (recipeQuantity as number)
+                : 1;
+        if (!Number.isFinite(packagePrice) || packagePrice <= 0) return 0;
+        if (!packageQuantity || !packageUnit || !recipeUnit) {
+            return packagePrice / safeQuantity;
+        }
+        if (!areUnitsCompatible(packageUnit, recipeUnit)) {
+            const converted = convertQuantity(1, recipeUnit, packageUnit, 1);
+            if (!Number.isFinite(converted) || !Number.isFinite(packageQuantity) || packageQuantity <= 0) {
+                return packagePrice / safeQuantity;
+            }
+            return (packagePrice / packageQuantity) * converted;
+        }
+        const packageBase = normalizeQuantity(packageQuantity, packageUnit);
+        const unitBase = normalizeQuantity(1, recipeUnit);
+        if (!Number.isFinite(packageBase) || packageBase <= 0 || !Number.isFinite(unitBase)) {
+            return packagePrice / safeQuantity;
+        }
+        return (packagePrice / packageBase) * unitBase;
+    };
 
     const getAuthHeaders = (
         includeJson = false,
@@ -378,7 +409,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 itemId,
                                 name: fallbackName || 'Item',
                                 aisle: details?.category || 'General',
-                                targetPrice: estimatedPrice,
+                                packageQuantity: details?.packageQuantity,
+                                packageUnit: details?.packageUnit,
+                                targetPrice: getUnitPrice(
+                                    estimatedPrice,
+                                    details?.packageQuantity,
+                                    details?.packageUnit,
+                                    item.quantity,
+                                    item.unit,
+                                ),
                                 bestStoreName: priceLeader?.storeName ?? fallbackStoreName,
                                 bestStoreItemName: priceLeader?.itemName ?? fallbackItemName,
                                 onSale: estimatedPrice > 0 ? item.onSale ?? false : false,
@@ -560,6 +599,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         resolveShoppingListIdsWithItems,
         dedupeShoppingList,
         ensureItemByName,
+        fetchItemsByIds,
         fetchItemPriceLeaders,
         fetchClosestPriceWithStore,
         apiUrl: API_URL,

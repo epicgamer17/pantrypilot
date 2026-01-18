@@ -23,7 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
 import { fetchItemPrices, fetchItemsByIds, ensureItemByName } from '../../context/appContext/api';
 import { normalizeObjectId } from '../../context/appContext/utils';
-import { areUnitsCompatible, normalizeQuantity } from '../../utils/unitConversion';
+import { areUnitsCompatible, convertQuantity, normalizeQuantity } from '../../utils/unitConversion';
 
 type SortOption = 'missing' | 'expiry' | 'cost' | 'az';
 type ViewMode = 'household' | 'public';
@@ -273,7 +273,18 @@ export default function RecipesScreen() {
                 const itemQty = Number(itemDetail?.packageQuantity ?? 1);
                 const safeRecipeQty = Number.isFinite(recipeQty) ? recipeQty : 1;
                 const safeItemQty = Number.isFinite(itemQty) && itemQty > 0 ? itemQty : 1;
-                totalCost += (safeRecipeQty / safeItemQty) * unitPrice;
+                const recipeUnit = ing.unit ?? 'unit';
+                const itemUnit = itemDetail?.packageUnit;
+                if (itemUnit && !areUnitsCompatible(itemUnit, recipeUnit)) {
+                    const converted = convertQuantity(safeRecipeQty, recipeUnit, itemUnit, 1);
+                    if (Number.isFinite(converted) && safeItemQty > 0) {
+                        totalCost += (converted / safeItemQty) * unitPrice;
+                    } else {
+                        totalCost += (safeRecipeQty / safeItemQty) * unitPrice;
+                    }
+                } else {
+                    totalCost += (safeRecipeQty / safeItemQty) * unitPrice;
+                }
             }
 
             // Check Fridge

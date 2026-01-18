@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensions, Modal, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensions, Modal, TextInput, Platform } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
@@ -12,7 +12,7 @@ type SortMode = 'aisle' | 'recipe' | 'az';
 
 export default function GroceryScreen() {
   const { width } = useWindowDimensions();
-  const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, setAllGroceryItemsChecked, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems, purchaseHistory } = useApp();
+  const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, setAllGroceryItemsChecked, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems, purchaseHistory, userId, householdId } = useApp();
   const [sortMode, setSortMode] = useState<SortMode>('aisle');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -28,6 +28,16 @@ export default function GroceryScreen() {
 
   const CATEGORY_OPTIONS = ['Produce', 'Dairy', 'Meat', 'Pantry', 'Frozen', 'Beverages', 'Other'];
   const ALLOWED_UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup', 'ea', 'tbsp', 'tsp', 'clove', 'cloves', 'leaf', 'leaves', 'sprig', 'sprigs'];
+  const API_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
+  const STAPLE_NAMES = ['Milk', 'Eggs', 'Bread', 'Cheese', 'Rice', 'Bananas', 'Butter'];
+  const [stapleItems, setStapleItems] = useState<{ name: string; category?: string }[]>([]);
+
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = {};
+    if (userId) headers['x-user-id'] = userId;
+    if (householdId) headers['x-household-id'] = householdId;
+    return headers;
+  };
 
   // --- QUICK ADD LOGIC ---
 
@@ -58,8 +68,43 @@ export default function GroceryScreen() {
   }, [fridgeItems, groceryList, recentlyDepletedItems, purchaseHistory]);
 
   // 2. Common Staples
-  const commonStaples = ['Milk', 'Eggs', 'Bread', 'Cheese', 'Rice', 'Bananas', 'Butter'].filter(
-    name => !groceryList.some(g => g.name === name)
+  useEffect(() => {
+    if (!userId) return;
+    let active = true;
+    const loadStaples = async () => {
+      const results = await Promise.all(
+        STAPLE_NAMES.map(async (name) => {
+          try {
+            const res = await fetch(
+              `${API_URL}/items?search=${encodeURIComponent(name)}&limit=5`,
+              { headers: getAuthHeaders() },
+            );
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!Array.isArray(data) || !data.length) return null;
+            const exact = data.find(
+              (item: { name?: string }) =>
+                item.name?.toLowerCase?.() === name.toLowerCase(),
+            );
+            const match = exact ?? data[0];
+            if (!match?.name) return null;
+            return { name: match.name, category: match.category };
+          } catch (error) {
+            return null;
+          }
+        }),
+      );
+      if (!active) return;
+      setStapleItems(results.filter(Boolean) as { name: string; category?: string }[]);
+    };
+    loadStaples();
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  const commonStaples = stapleItems.filter(
+    (item) => !groceryList.some((g) => g.name.toLowerCase() === item.name.toLowerCase()),
   );
 
   // --- MAIN LIST LOGIC ---
@@ -248,14 +293,14 @@ export default function GroceryScreen() {
               ))}
 
               {/* 2. Staples */}
-              {commonStaples.map(name => (
+              {commonStaples.map((item) => (
                 <TouchableOpacity
-                  key={name}
+                  key={item.name}
                   style={[styles.chip, styles.chipStaple]}
-                  onPress={() => addToGroceryList(name, 'Pantry', 0)}
+                  onPress={() => addToGroceryList(item.name, item.category ?? 'Other', 0)}
                 >
                   <MaterialCommunityIcons name="plus" size={16} color={Colors.light.info} />
-                  <Text style={styles.chipText}>{name}</Text>
+                  <Text style={styles.chipText}>{item.name}</Text>
                 </TouchableOpacity>
               ))}
 

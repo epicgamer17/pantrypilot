@@ -130,7 +130,7 @@ const normalizeReceiptItem = (item) => {
   const parsedPackageQuantity = normalizeNumber(item.packageQuantity);
   return omitUndefined({
     name: cleanString(item.name),
-    category: cleanString(item.category),
+    category: cleanString(item.category) || 'Other',
     subcategory: cleanString(item.subcategory),
     brand: cleanString(item.brand),
     barcode: cleanString(item.barcode),
@@ -453,7 +453,7 @@ router.post('/households/:householdId/receipts/from-gmail', async (req, res) => 
     return res.status(502).json({ error: message });
   }
 
-  const groceryStore = normalizeStorePayload(
+  let groceryStore = normalizeStorePayload(
     webhookData.groceryStore ?? webhookData.store,
   );
   const itemPayload =
@@ -463,6 +463,24 @@ router.post('/households/:householdId/receipts/from-gmail', async (req, res) => 
     : itemPayload
       ? [itemPayload]
       : [];
+
+  console.log('Gmail extracted store:', JSON.stringify(groceryStore));
+  console.log('Gmail extracted items count:', itemDataList.length);
+
+  // If the store looks like item data (has category, brand, etc.), use a default store
+  if (groceryStore && (groceryStore.category || groceryStore.brand || groceryStore.packageUnit)) {
+    console.log('Gmail: Store data appears to be item data, using default store');
+    groceryStore = {
+      name: 'Gmail Receipt Store',
+      location: {
+        address: 'Unknown',
+        city: 'Unknown',
+        state: 'Unknown',
+        zipCode: '00000',
+        coordinates: { type: 'Point', coordinates: [0, 0] }
+      },
+    };
+  }
 
   if (!groceryStore || !itemDataList.length) {
     console.log('Missing store or items:', webhookData);
@@ -476,15 +494,24 @@ router.post('/households/:householdId/receipts/from-gmail', async (req, res) => 
       .json({ error: 'Gmail response missing groceryStore.name.' });
   }
 
-  // Store Upsert
-  const gmailStoreUpdateData = omitUndefined({
+  // Store Upsert - ensure all required fields are present
+  const storeLocation = groceryStore.location || {};
+  const gmailStoreUpdateData = {
     name: groceryStore.name,
-    phone: groceryStore.phone,
-    hours: groceryStore.hours,
+    location: {
+      address: storeLocation.address || 'Unknown',
+      city: storeLocation.city || 'Unknown',
+      state: storeLocation.state || 'Unknown',
+      zipCode: storeLocation.zipCode || '00000',
+      coordinates: storeLocation.coordinates || { type: 'Point', coordinates: [0, 0] }
+    },
     updatedAt: now,
-  });
-  // Always set location (required by schema)
-  gmailStoreUpdateData.location = groceryStore.location || {};
+  };
+  // Add optional fields only if defined
+  if (groceryStore.phone) gmailStoreUpdateData.phone = groceryStore.phone;
+  if (groceryStore.hours) gmailStoreUpdateData.hours = groceryStore.hours;
+
+  console.log('Upserting store with data:', JSON.stringify(gmailStoreUpdateData));
 
   const storeResult = await db.collection('groceryStores').findOneAndUpdate(
     getStoreFilter(groceryStore),
@@ -493,7 +520,11 @@ router.post('/households/:householdId/receipts/from-gmail', async (req, res) => 
       $setOnInsert: { createdAt: now },
     },
     { upsert: true, returnDocument: 'after' },
-  );
+  ).catch(err => {
+    console.error('Store upsert failed:', err.message);
+    console.error('Store data:', JSON.stringify(groceryStore));
+    throw err;
+  });
   const storeDoc = getDoc(storeResult);
   const storeId = storeDoc?._id;
 
@@ -512,22 +543,24 @@ router.post('/households/:householdId/receipts/from-gmail', async (req, res) => 
     const itemResult = await db.collection('items').findOneAndUpdate(
       getItemFilter(itemData),
       {
-        $set: omitUndefined({
+        $set: {
           name: itemData.name,
-          category: itemData.category,
-          subcategory: itemData.subcategory,
-          brand: itemData.brand,
-          barcode: itemData.barcode,
-          packageQuantity: itemData.packageQuantity,
-          packageUnit: itemData.packageUnit,
-          defaultUnit: itemData.defaultUnit,
-          nutritionalInfo: itemData.nutritionalInfo,
-          averageShelfLife: itemData.averageShelfLife,
-          storageLocation: itemData.storageLocation,
-          imageUrl: itemData.imageUrl,
-          tags: itemData.tags,
+          category: itemData.category || 'Other',
           updatedAt: now,
-        }),
+          ...omitUndefined({
+            subcategory: itemData.subcategory,
+            brand: itemData.brand,
+            barcode: itemData.barcode,
+            packageQuantity: itemData.packageQuantity,
+            packageUnit: itemData.packageUnit,
+            defaultUnit: itemData.defaultUnit,
+            nutritionalInfo: itemData.nutritionalInfo,
+            averageShelfLife: itemData.averageShelfLife,
+            storageLocation: itemData.storageLocation,
+            imageUrl: itemData.imageUrl,
+            tags: itemData.tags,
+          }),
+        },
         $setOnInsert: { createdAt: now },
       },
       { upsert: true, returnDocument: 'after' },
@@ -647,7 +680,7 @@ router.post('/households/:householdId/receipts/from-url', async (req, res) => {
     return res.status(502).json({ error: message });
   }
 
-  const groceryStore = normalizeStorePayload(
+  let groceryStore = normalizeStorePayload(
     webhookData.groceryStore ?? webhookData.store,
   );
   const itemPayload =
@@ -657,6 +690,24 @@ router.post('/households/:householdId/receipts/from-url', async (req, res) => {
     : itemPayload
       ? [itemPayload]
       : [];
+
+  console.log('URL: Extracted store:', JSON.stringify(groceryStore));
+  console.log('URL: Extracted items count:', itemDataList.length);
+
+  // If the store looks like item data (has category, brand, etc.), use a default store
+  if (groceryStore && (groceryStore.category || groceryStore.brand || groceryStore.packageUnit)) {
+    console.log('URL: Store data appears to be item data, using default store');
+    groceryStore = {
+      name: 'Receipt Store',
+      location: {
+        address: 'Unknown',
+        city: 'Unknown',
+        state: 'Unknown',
+        zipCode: '00000',
+        coordinates: { type: 'Point', coordinates: [0, 0] }
+      },
+    };
+  }
 
   if (!groceryStore || !itemDataList.length) {
     console.log('Missing store or items:', webhookData);
@@ -670,15 +721,25 @@ router.post('/households/:householdId/receipts/from-url', async (req, res) => {
       .json({ error: 'Webhook response missing groceryStore.name.' });
   }
 
-  // Store Upsert
-  const urlStoreUpdateData = omitUndefined({
+  // Store Upsert - ensure all required fields are present
+  const storeLocation = groceryStore.location || {};
+  const urlStoreUpdateData = {
     name: groceryStore.name,
-    phone: groceryStore.phone,
-    hours: groceryStore.hours,
+    location: {
+      address: storeLocation.address || 'Unknown',
+      city: storeLocation.city || 'Unknown',
+      state: storeLocation.state || 'Unknown',
+      zipCode: storeLocation.zipCode || '00000',
+      coordinates: storeLocation.coordinates || { type: 'Point', coordinates: [0, 0] }
+    },
+    createdAt: now,
     updatedAt: now,
-  });
-  // Always set location (required by schema)
-  urlStoreUpdateData.location = groceryStore.location || {};
+  };
+  // Add optional fields only if defined
+  if (groceryStore.phone) urlStoreUpdateData.phone = groceryStore.phone;
+  if (groceryStore.hours) urlStoreUpdateData.hours = groceryStore.hours;
+
+  console.log('URL: Upserting store with data:', JSON.stringify(urlStoreUpdateData));
 
   const storeResult = await db.collection('groceryStores').findOneAndUpdate(
     getStoreFilter(groceryStore),
@@ -687,7 +748,12 @@ router.post('/households/:householdId/receipts/from-url', async (req, res) => {
       $setOnInsert: { createdAt: now },
     },
     { upsert: true, returnDocument: 'after' },
-  );
+  ).catch(err => {
+    console.error('URL: Store upsert failed:', err.message);
+    console.error('URL: Store data:', JSON.stringify(groceryStore));
+    console.error('URL: Update data:', JSON.stringify(urlStoreUpdateData));
+    throw err;
+  });
   const storeDoc = getDoc(storeResult);
   const storeId = storeDoc?._id;
 
@@ -706,22 +772,24 @@ router.post('/households/:householdId/receipts/from-url', async (req, res) => {
     const itemResult = await db.collection('items').findOneAndUpdate(
       getItemFilter(itemData),
       {
-        $set: omitUndefined({
+        $set: {
           name: itemData.name,
-          category: itemData.category,
-          subcategory: itemData.subcategory,
-          brand: itemData.brand,
-          barcode: itemData.barcode,
-          packageQuantity: itemData.packageQuantity,
-          packageUnit: itemData.packageUnit,
-          defaultUnit: itemData.defaultUnit,
-          nutritionalInfo: itemData.nutritionalInfo,
-          averageShelfLife: itemData.averageShelfLife,
-          storageLocation: itemData.storageLocation,
-          imageUrl: itemData.imageUrl,
-          tags: itemData.tags,
+          category: itemData.category || 'Other',
           updatedAt: now,
-        }),
+          ...omitUndefined({
+            subcategory: itemData.subcategory,
+            brand: itemData.brand,
+            barcode: itemData.barcode,
+            packageQuantity: itemData.packageQuantity,
+            packageUnit: itemData.packageUnit,
+            defaultUnit: itemData.defaultUnit,
+            nutritionalInfo: itemData.nutritionalInfo,
+            averageShelfLife: itemData.averageShelfLife,
+            storageLocation: itemData.storageLocation,
+            imageUrl: itemData.imageUrl,
+            tags: itemData.tags,
+          }),
+        },
         $setOnInsert: { createdAt: now },
       },
       { upsert: true, returnDocument: 'after' },
@@ -867,15 +935,25 @@ router.post(
         .json({ error: 'Webhook response missing groceryStore.location.' });
     }
 
-    // Store Upsert
-    const uploadStoreUpdateData = omitUndefined({
+    // Store Upsert - ensure all required fields are present
+    const storeLocation = groceryStore.location || {};
+    const uploadStoreUpdateData = {
       name: groceryStore.name,
-      phone: groceryStore.phone,
-      hours: groceryStore.hours,
+      location: {
+        address: storeLocation.address || 'Unknown',
+        city: storeLocation.city || 'Unknown',
+        state: storeLocation.state || 'Unknown',
+        zipCode: storeLocation.zipCode || '00000',
+        coordinates: storeLocation.coordinates || { type: 'Point', coordinates: [0, 0] }
+      },
+      createdAt: now,
       updatedAt: now,
-    });
-    // Always set location (required by schema)
-    uploadStoreUpdateData.location = groceryStore.location || {};
+    };
+    // Add optional fields only if defined
+    if (groceryStore.phone) uploadStoreUpdateData.phone = groceryStore.phone;
+    if (groceryStore.hours) uploadStoreUpdateData.hours = groceryStore.hours;
+
+    console.log('Upload: Upserting store with data:', JSON.stringify(uploadStoreUpdateData));
 
     const storeResult = await db.collection('groceryStores').findOneAndUpdate(
       getStoreFilter(groceryStore),
@@ -884,7 +962,11 @@ router.post(
         $setOnInsert: { createdAt: now },
       },
       { upsert: true, returnDocument: 'after' },
-    );
+    ).catch(err => {
+      console.error('Upload: Store upsert failed:', err.message);
+      console.error('Upload: Store data:', JSON.stringify(groceryStore));
+      throw err;
+    });
     const storeDoc = getDoc(storeResult);
     const storeId = storeDoc?._id;
 

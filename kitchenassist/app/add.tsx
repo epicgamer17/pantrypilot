@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
   View,
@@ -339,25 +340,69 @@ export default function AddItemScreen() {
               </ThemedView>
             ) : (
               <ThemedView style={styles.receiptContainer}>
-                <ThemedView style={styles.receiptActionBox}>
-                  <MaterialCommunityIcons name="receipt" size={64} color={Colors.light.tint} style={{ opacity: 0.3 }} />
-                  <ThemedText type="subtitle" style={{ textAlign: 'center' }}>Receipt Scanner</ThemedText>
-                  <ThemedText style={styles.receiptHint}>
-                    Upload a photo of your grocery receipt and we'll automatically add the items to your pantry.
-                  </ThemedText>
-                  <TouchableOpacity style={styles.pickButton} onPress={pickReceipt}>
-                    <MaterialCommunityIcons name="camera-plus" size={24} color="white" />
-                    <ThemedText style={styles.pickButtonText}>
-                      {selectedReceipt ? 'Replace Photo' : 'Capture Receipt'}
-                    </ThemedText>
-                  </TouchableOpacity>
-                  {selectedReceipt && (
-                    <ThemedView style={styles.selectionIndicator}>
-                      <MaterialCommunityIcons name="file-check" size={16} color={Colors.light.success} />
-                      <ThemedText style={styles.selectionText}>Ready to upload</ThemedText>
-                    </ThemedView>
-                  )}
+                {/* Receipt Mode Toggle */}
+                <ThemedView style={styles.receiptModeToggle}>
+                  {(['upload', 'url', 'gmail'] as const).map((mode) => (
+                    <TouchableOpacity
+                      key={mode}
+                      style={[styles.receiptModePill, receiptMode === mode && styles.receiptModePillActive]}
+                      onPress={() => setReceiptMode(mode)}
+                    >
+                      <ThemedText style={[styles.receiptModeText, receiptMode === mode && styles.receiptModeTextActive]}>
+                        {mode === 'upload' ? '📷 Upload' : mode === 'url' ? '🔗 URL' : '📧 Gmail'}
+                      </ThemedText>
+                    </TouchableOpacity>
+                  ))}
                 </ThemedView>
+
+                {receiptMode === 'upload' ? (
+                  <ThemedView style={styles.receiptActionBox}>
+                    <MaterialCommunityIcons name="receipt" size={64} color={Colors.light.tint} style={{ opacity: 0.3 }} />
+                    <ThemedText type="subtitle" style={{ textAlign: 'center' }}>Receipt Scanner</ThemedText>
+                    <ThemedText style={styles.receiptHint}>
+                      Upload a photo of your grocery receipt and we'll automatically add the items to your pantry.
+                    </ThemedText>
+                    <TouchableOpacity style={styles.pickButton} onPress={pickReceipt}>
+                      <MaterialCommunityIcons name="camera-plus" size={24} color="white" />
+                      <ThemedText style={styles.pickButtonText}>
+                        {selectedReceipt ? 'Replace Photo' : 'Capture Receipt'}
+                      </ThemedText>
+                    </TouchableOpacity>
+                    {selectedReceipt && (
+                      <ThemedView style={styles.selectionIndicator}>
+                        <MaterialCommunityIcons name="file-check" size={16} color={Colors.light.success} />
+                        <ThemedText style={styles.selectionText}>Ready to upload</ThemedText>
+                      </ThemedView>
+                    )}
+                  </ThemedView>
+                ) : receiptMode === 'url' ? (
+                  <ThemedView style={styles.formCard}>
+                    <ThemedView style={styles.fieldGroup}>
+                      <ThemedText type="defaultSemiBold">Receipt Image URL</ThemedText>
+                      <TextInput
+                        style={styles.themedInput}
+                        placeholder="https://example.com/receipt.jpg"
+                        value={receiptUrl}
+                        onChangeText={setReceiptUrl}
+                        autoCapitalize="none"
+                        keyboardType="url"
+                        placeholderTextColor={Colors.light.textMuted}
+                      />
+                      <ThemedText style={styles.receiptHint}>
+                        Enter the URL of a receipt image to process
+                      </ThemedText>
+                    </ThemedView>
+                  </ThemedView>
+                ) : (
+                  <ThemedView style={styles.receiptActionBox}>
+                    <MaterialCommunityIcons name="email-outline" size={64} color={Colors.light.tint} style={{ opacity: 0.3 }} />
+                    <ThemedText type="subtitle" style={{ textAlign: 'center' }}>Gmail Receipt</ThemedText>
+                    <ThemedText style={styles.receiptHint}>
+                      Process the most recent receipt from your linked Gmail account. No input needed!
+                    </ThemedText>
+                  </ThemedView>
+                )}
+
                 {uploadError && <ThemedText style={styles.errorText}>{uploadError}</ThemedText>}
               </ThemedView>
             )}
@@ -370,16 +415,23 @@ export default function AddItemScreen() {
             <TouchableOpacity
               style={[
                 styles.primaryButton,
-                (activeTab === 'receipt' && !selectedReceipt) && styles.buttonDisabled
+                (isUploading || 
+                 (activeTab === 'receipt' && receiptMode === 'upload' && !selectedReceipt) ||
+                 (activeTab === 'receipt' && receiptMode === 'url' && !receiptUrl.trim())) && styles.buttonDisabled
               ]}
               onPress={activeTab === 'manual' ? handleSubmit : uploadReceipt}
-              disabled={isUploading || (activeTab === 'receipt' && !selectedReceipt)}
+              disabled={
+                isUploading || 
+                (activeTab === 'receipt' && receiptMode === 'upload' && !selectedReceipt) ||
+                (activeTab === 'receipt' && receiptMode === 'url' && !receiptUrl.trim())
+              }
             >
               {isUploading ? (
                 <ActivityIndicator color="white" />
               ) : (
                 <ThemedText style={styles.primaryButtonText}>
-                  {activeTab === 'manual' ? 'Add Item to Fridge' : 'Process Receipt'}
+                  {activeTab === 'manual' ? 'Add Item to Fridge' : 
+                   receiptMode === 'gmail' ? 'Process Gmail Receipt' : 'Process Receipt'}
                 </ThemedText>
               )}
             </TouchableOpacity>
@@ -466,7 +518,32 @@ const styles = StyleSheet.create({
   },
   dateDisplay: { fontSize: 16, fontWeight: '500' },
   iosDateContainer: { backgroundColor: Colors.light.card, borderRadius: BorderRadius.l, marginTop: Spacing.s, overflow: 'hidden' },
-  receiptContainer: { paddingVertical: Spacing.xxl, backgroundColor: 'transparent' },
+  receiptContainer: { paddingVertical: Spacing.l, backgroundColor: 'transparent', gap: Spacing.l },
+  receiptModeToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.light.border + '40',
+    borderRadius: BorderRadius.circle,
+    padding: 4,
+    gap: 4
+  },
+  receiptModePill: { 
+    flex: 1, 
+    paddingVertical: 10, 
+    alignItems: 'center', 
+    borderRadius: BorderRadius.circle 
+  },
+  receiptModePillActive: { 
+    backgroundColor: Colors.light.card, 
+    ...Shadows.soft 
+  },
+  receiptModeText: { 
+    fontSize: 13, 
+    fontWeight: '700', 
+    color: Colors.light.textMuted 
+  },
+  receiptModeTextActive: { 
+    color: Colors.light.tint 
+  },
   receiptActionBox: {
     backgroundColor: Colors.light.card,
     borderRadius: 24,

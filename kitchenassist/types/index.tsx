@@ -59,7 +59,25 @@ export interface Recipe {
     isAiGenerated?: boolean;
     isPublic?: boolean;
     sourceUrl?: string;
+    sourceType?: string;
     servings?: number;
+    description?: string;
+    imageUrl?: string;
+    prepTime?: number;
+    cookTime?: number;
+    difficulty?: string;
+    cuisine?: string;
+    tags?: string[];
+    nutritionalInfo?: {
+        totalCalories?: number;
+        caloriesPerServing?: number;
+        protein?: number;
+        carbs?: number;
+        fat?: number;
+        fiber?: number;
+        sugar?: number;
+        sodium?: number;
+    };
 }
 
 export interface PurchaseRecord {

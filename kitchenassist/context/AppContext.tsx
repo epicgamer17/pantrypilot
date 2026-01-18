@@ -263,8 +263,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             setFridgeLoading(true);
             try {
                 const fridgeRes = await fetch(
-                    `${API_URL}/households/${householdId}/fridge-items`,
-                    { headers: getAuthHeaders() },
+                    `${API_URL}/households/${householdId}/fridge-items?_t=${Date.now()}`,
+                    { 
+                        headers: getAuthHeaders(),
+                        cache: 'no-store'
+                    },
                 );
                 if (fridgeRes.ok) {
                     const data = await fridgeRes.json();
@@ -320,8 +323,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
             // B. Fetch Recipes
             const recipesRes = await fetch(
-                `${API_URL}/recipes?householdId=${householdId}`,
-                { headers: getAuthHeaders() },
+                `${API_URL}/recipes?householdId=${householdId}&_t=${Date.now()}`,
+                { 
+                    headers: getAuthHeaders(),
+                    cache: 'no-store'
+                },
             );
             if (recipesRes.ok) {
                 const data = await recipesRes.json();
@@ -361,8 +367,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             }
 
             // C. Fetch Household (for Grocery List & Info)
-            const householdRes = await fetch(`${API_URL}/households/${householdId}`, {
+            const householdRes = await fetch(`${API_URL}/households/${householdId}?_t=${Date.now()}`, {
                 headers: getAuthHeaders(),
+                cache: 'no-store',
             });
             if (householdRes.ok) {
                 const data = await householdRes.json();
@@ -474,8 +481,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             }
 
             const purchasesRes = await fetch(
-                `${API_URL}/households/${householdId}/purchases?limit=200`,
-                { headers: getAuthHeaders() },
+                `${API_URL}/households/${householdId}/purchases?limit=200&_t=${Date.now()}`,
+                { 
+                    headers: getAuthHeaders(),
+                    cache: 'no-store'
+                },
             );
             if (purchasesRes.ok) {
                 const data = await purchasesRes.json();

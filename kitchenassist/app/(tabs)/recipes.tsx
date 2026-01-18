@@ -56,6 +56,18 @@ export default function RecipesScreen() {
     const [sortBy, setSortBy] = useState<SortOption>('missing');
     const [searchQuery, setSearchQuery] = useState('');
     const [hideAiRecipes, setHideAiRecipes] = useState(false);
+    
+    // YouTube Modal State
+    const [youtubeModalVisible, setYoutubeModalVisible] = useState(false);
+    const [youtubeUrl, setYoutubeUrl] = useState('');
+    const [youtubeLoading, setYoutubeLoading] = useState(false);
+    const [youtubeError, setYoutubeError] = useState<string | null>(null);
+    
+    // Article Modal State
+    const [articleModalVisible, setArticleModalVisible] = useState(false);
+    const [articleUrl, setArticleUrl] = useState('');
+    const [articleLoading, setArticleLoading] = useState(false);
+    const [articleError, setArticleError] = useState<string | null>(null);
 
     // Cook Modal State
     const [cookModalVisible, setCookModalVisible] = useState(false);
@@ -597,6 +609,160 @@ export default function RecipesScreen() {
         setModalVisible(true);
     };
 
+    const openYoutubeModal = () => {
+        setYoutubeUrl('');
+        setYoutubeError(null);
+        setYoutubeModalVisible(true);
+    };
+
+    const openArticleModal = () => {
+        setArticleUrl('');
+        setArticleError(null);
+        setArticleModalVisible(true);
+    };
+
+    const handleYoutubeSubmit = async () => {
+        if (!youtubeUrl.trim()) {
+            setYoutubeError('Please enter a YouTube URL');
+            return;
+        }
+
+        setYoutubeLoading(true);
+        setYoutubeError(null);
+
+        try {
+            const res = await fetch(`${API_URL}/recipes/from-youtube`, {
+                method: 'POST',
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({ youtubeUrl: youtubeUrl.trim() }),
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'Failed to extract recipe' }));
+                throw new Error(errorData.error || 'Failed to extract recipe');
+            }
+
+            const data = await res.json();
+            const recipe = data?.recipe;
+
+            if (!recipe?.name || !Array.isArray(recipe.ingredients)) {
+                throw new Error('Invalid recipe data received');
+            }
+
+            // Resolve ingredients to itemIds
+            const resolvedIngredients = await Promise.all(
+                recipe.ingredients.map(async (ingredient: any) => {
+                    const ingredientName = ingredient.name?.trim() || 'Unknown Ingredient';
+                    const resolved = await ensureItemByName(
+                        API_URL,
+                        getAuthHeaders,
+                        userId,
+                        ingredientName,
+                        'Recipe',
+                    );
+                    return {
+                        name: ingredientName,
+                        quantity: Number(ingredient.quantity) || 1,
+                        unit: ingredient.unit?.trim() || 'unit',
+                        itemId: resolved?.id ?? undefined,
+                    };
+                }),
+            );
+
+            // Pre-populate the recipe modal with YouTube data
+            setEditingRecipeId(null);
+            setNewRecipeName(recipe.name?.trim() || 'Untitled Recipe');
+            setNewIngredients(resolvedIngredients.filter(ing => ing.name && ing.itemId));
+            setNewInstructionsText(buildInstructionText(recipe.instructions) || '');
+            setNewRecipeServings(
+                Number.isFinite(Number(recipe.servings))
+                    ? String(recipe.servings)
+                    : '',
+            );
+            setIsPublicRecipe(false);
+            setIsAiRecipe(false);
+
+            // Close YouTube modal and open recipe modal
+            setYoutubeModalVisible(false);
+            setModalVisible(true);
+        } catch (error: any) {
+            setYoutubeError(error.message || 'Failed to extract recipe from YouTube');
+        } finally {
+            setYoutubeLoading(false);
+        }
+    };
+
+    const handleArticleSubmit = async () => {
+        if (!articleUrl.trim()) {
+            setArticleError('Please enter an article URL');
+            return;
+        }
+
+        setArticleLoading(true);
+        setArticleError(null);
+
+        try {
+            const res = await fetch(`${API_URL}/recipes/from-article`, {
+                method: 'POST',
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({ articleUrl: articleUrl.trim() }),
+            });
+
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ error: 'Failed to extract recipe' }));
+                throw new Error(errorData.error || 'Failed to extract recipe');
+            }
+
+            const data = await res.json();
+            const recipe = data?.recipe;
+
+            if (!recipe?.name || !Array.isArray(recipe.ingredients)) {
+                throw new Error('Invalid recipe data received');
+            }
+
+            // Resolve ingredients to itemIds
+            const resolvedIngredients = await Promise.all(
+                recipe.ingredients.map(async (ingredient: any) => {
+                    const ingredientName = ingredient.name?.trim() || 'Unknown Ingredient';
+                    const resolved = await ensureItemByName(
+                        API_URL,
+                        getAuthHeaders,
+                        userId,
+                        ingredientName,
+                        'Recipe',
+                    );
+                    return {
+                        name: ingredientName,
+                        quantity: Number(ingredient.quantity) || 1,
+                        unit: ingredient.unit?.trim() || 'unit',
+                        itemId: resolved?.id ?? undefined,
+                    };
+                }),
+            );
+
+            // Pre-populate the recipe modal with article data
+            setEditingRecipeId(null);
+            setNewRecipeName(recipe.name?.trim() || 'Untitled Recipe');
+            setNewIngredients(resolvedIngredients.filter(ing => ing.name && ing.itemId));
+            setNewInstructionsText(buildInstructionText(recipe.instructions) || '');
+            setNewRecipeServings(
+                Number.isFinite(Number(recipe.servings))
+                    ? String(recipe.servings)
+                    : '',
+            );
+            setIsPublicRecipe(false);
+            setIsAiRecipe(false);
+
+            // Close article modal and open recipe modal
+            setArticleModalVisible(false);
+            setModalVisible(true);
+        } catch (error: any) {
+            setArticleError(error.message || 'Failed to extract recipe from article');
+        } finally {
+            setArticleLoading(false);
+        }
+    };
+
     const confirmCook = () => {
         if (recipeToCook) {
             const parsed = Number(cookServings);
@@ -743,9 +909,17 @@ export default function RecipesScreen() {
 
                     {viewMode === 'household' && (
                         <View style={styles.controlsRight}>
-                            <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
-                                <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
-                            </TouchableOpacity>
+                            <View style={styles.buttonRow}>
+                                <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
+                                    <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.centeredAddButton, styles.youtubeButton]} onPress={openYoutubeModal}>
+                                    <Text style={styles.centeredAddButtonText}>+ From YouTube</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.centeredAddButton, styles.articleButton]} onPress={openArticleModal}>
+                                    <Text style={styles.centeredAddButtonText}>+ From Article</Text>
+                                </TouchableOpacity>
+                            </View>
                             <TouchableOpacity
                                 onPress={handleGeminiCook}
                                 style={[styles.geminiButton, geminiLoading && styles.geminiButtonDisabled]}
@@ -1203,6 +1377,98 @@ export default function RecipesScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Modal for YouTube URL Input */}
+            <Modal visible={youtubeModalVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.createItemCard}>
+                        <Text style={Typography.subHeader}>Add Recipe from YouTube</Text>
+                        <Text style={{ color: Colors.light.textSecondary, marginVertical: 10 }}>
+                            Enter a YouTube URL to extract the recipe
+                        </Text>
+
+                        <Text style={Typography.label}>YouTube URL</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            value={youtubeUrl}
+                            onChangeText={setYoutubeUrl}
+                            editable={!youtubeLoading}
+                        />
+
+                        {youtubeError && (
+                            <Text style={styles.errorText}>{youtubeError}</Text>
+                        )}
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                onPress={() => setYoutubeModalVisible(false)}
+                                style={styles.cancelBtn}
+                                disabled={youtubeLoading}
+                            >
+                                <Text style={styles.cancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleYoutubeSubmit}
+                                style={[styles.saveBtn, youtubeLoading && styles.geminiButtonDisabled]}
+                                disabled={youtubeLoading}
+                            >
+                                {youtubeLoading ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <Text style={styles.saveText}>Extract Recipe</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Modal for Article URL Input */}
+            <Modal visible={articleModalVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.createItemCard}>
+                        <Text style={Typography.subHeader}>Add Recipe from Article</Text>
+                        <Text style={{ color: Colors.light.textSecondary, marginVertical: 10 }}>
+                            Enter a recipe article URL (blog, newspaper, etc.)
+                        </Text>
+
+                        <Text style={Typography.label}>Article URL</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="https://example.com/recipe-article"
+                            value={articleUrl}
+                            onChangeText={setArticleUrl}
+                            editable={!articleLoading}
+                        />
+
+                        {articleError && (
+                            <Text style={styles.errorText}>{articleError}</Text>
+                        )}
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                onPress={() => setArticleModalVisible(false)}
+                                style={styles.cancelBtn}
+                                disabled={articleLoading}
+                            >
+                                <Text style={styles.cancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleArticleSubmit}
+                                style={[styles.saveBtn, articleLoading && styles.geminiButtonDisabled]}
+                                disabled={articleLoading}
+                            >
+                                {articleLoading ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <Text style={styles.saveText}>Extract Recipe</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -1215,6 +1481,11 @@ const styles = StyleSheet.create({
     headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
     // Centered Add Button
+    buttonRow: {
+        flexDirection: 'row',
+        gap: 10,
+        alignSelf: 'flex-end',
+    },
     centeredAddButton: {
         alignSelf: 'flex-end',
         backgroundColor: Colors.light.primary,
@@ -1223,10 +1494,22 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.l,
         ...Shadows.soft
     },
+    youtubeButton: {
+        backgroundColor: '#FF0000',
+    },
+    articleButton: {
+        backgroundColor: '#FF6B35',
+    },
     centeredAddButtonText: {
         color: 'white',
         fontWeight: '700',
         fontSize: 16
+    },
+    errorText: {
+        color: Colors.light.danger,
+        fontSize: 14,
+        marginTop: -10,
+        marginBottom: 10,
     },
     headerControlsRow: {
         flexDirection: 'row',

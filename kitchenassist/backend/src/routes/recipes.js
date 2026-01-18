@@ -257,4 +257,280 @@ router.post('/recipes/generate', async (req, res) => {
     }
 });
 
+router.post('/recipes/from-article', async (req, res) => {
+    // Use the exact configuration from article-recipe.py
+    const API_KEY = process.env.GUMLOOP_API_KEY || 'ef1f551abfa5460f945f8a5e32979b91';
+    const USER_ID = process.env.GUMLOOP_USER_ID || '6IBmuxzZmmXRRQ4lX4EiGO1GeoJ2';
+    const SAVED_ITEM_ID = process.env.GUMLOOP_ARTICLE_SAVED_ITEM_ID || '4SbKGD8iRn16UjfNmDUoUT';
+    const BASE_URL = process.env.GUMLOOP_BASE_URL || 'https://api.gumloop.com/api/v1';
+
+    const { articleUrl } = req.body;
+    if (!articleUrl || typeof articleUrl !== 'string') {
+        return res.status(400).json({ error: 'articleUrl is required' });
+    }
+
+    try {
+        // Start Gumloop pipeline with article_url (matching article-recipe.py)
+        const startUrl = `${BASE_URL}/start_pipeline?api_key=${API_KEY}&user_id=${USER_ID}&saved_item_id=${SAVED_ITEM_ID}`;
+        console.log('Starting Gumloop pipeline for article URL:', articleUrl);
+        
+        const startResponse = await fetch(startUrl, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ article_url: articleUrl }),
+        });
+
+        if (!startResponse.ok) {
+            const text = await startResponse.text();
+            console.error('Failed to start pipeline:', text);
+            return res.status(500).json({ error: 'Failed to start Gumloop pipeline', details: text });
+        }
+
+        const startData = await startResponse.json();
+        console.log('Pipeline started:', startData);
+        const runId = startData.run_id;
+
+        if (!runId) {
+            // Check if synchronous result
+            if (startData.outputs && startData.state === 'DONE') {
+                return res.json({ recipe: extractRecipeFromLogs(startData) });
+            }
+            console.error('No run_id in response:', startData);
+            return res.status(500).json({ error: 'No run_id in Gumloop response' });
+        }
+
+        // Poll for completion (matching article-recipe.py timeout)
+        const timeout = 120000; // 120 seconds
+        const pollInterval = 2000; // 2 seconds
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < timeout) {
+            const pollUrl = `${BASE_URL}/get_pl_run?run_id=${runId}&user_id=${USER_ID}&api_key=${API_KEY}`;
+            const pollResponse = await fetch(pollUrl, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const pollData = await pollResponse.json();
+            const state = pollData.state;
+            console.log('Pipeline state:', state);
+            console.log('Full poll response:', JSON.stringify(pollData).substring(0, 200));
+
+            if (state === 'DONE') {
+                const recipe = extractRecipeFromLogs(pollData);
+                console.log('Recipe extracted:', recipe.name);
+                console.log('Ingredients count:', recipe.ingredients?.length || 0);
+                console.log('First ingredient:', JSON.stringify(recipe.ingredients?.[0] || {}));
+                return res.json({ recipe });
+            }
+
+            if (state === 'FAILED') {
+                console.error('Pipeline failed:', pollData);
+                return res.status(500).json({ error: 'Gumloop pipeline failed', details: pollData });
+            }
+
+            // Wait before next poll
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+
+        console.error('Pipeline timeout after 120 seconds');
+        return res.status(408).json({ error: 'Pipeline timeout after 120 seconds' });
+    } catch (error) {
+        console.error('Error processing article recipe:', error);
+        return res.status(500).json({ error: 'Failed to process article recipe', details: error.message });
+    }
+});
+
+router.post('/recipes/from-youtube', async (req, res) => {
+    // Use the exact configuration from youtube-recipe.py
+    const API_KEY = process.env.GUMLOOP_API_KEY || 'ef1f551abfa5460f945f8a5e32979b91';
+    const USER_ID = process.env.GUMLOOP_USER_ID || '6IBmuxzZmmXRRQ4lX4EiGO1GeoJ2';
+    const SAVED_ITEM_ID = process.env.GUMLOOP_SAVED_ITEM_ID || 'hFMQjdfjvPobH137HhPmLQ';
+    const BASE_URL = process.env.GUMLOOP_BASE_URL || 'https://api.gumloop.com/api/v1';
+
+    const { youtubeUrl } = req.body;
+    if (!youtubeUrl || typeof youtubeUrl !== 'string') {
+        return res.status(400).json({ error: 'youtubeUrl is required' });
+    }
+
+    try {
+        // Start Gumloop pipeline with article_url (matching youtube-recipe.py)
+        const startUrl = `${BASE_URL}/start_pipeline?api_key=${API_KEY}&user_id=${USER_ID}&saved_item_id=${SAVED_ITEM_ID}`;
+        console.log('Starting Gumloop pipeline for URL:', youtubeUrl);
+        
+        const startResponse = await fetch(startUrl, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ article_url: youtubeUrl }),
+        });
+
+        if (!startResponse.ok) {
+            const text = await startResponse.text();
+            console.error('Failed to start pipeline:', text);
+            return res.status(500).json({ error: 'Failed to start Gumloop pipeline', details: text });
+        }
+
+        const startData = await startResponse.json();
+        console.log('Pipeline started:', startData);
+        const runId = startData.run_id;
+
+        if (!runId) {
+            // Check if synchronous result
+            if (startData.outputs && startData.state === 'DONE') {
+                return res.json({ recipe: extractRecipeFromLogs(startData) });
+            }
+            console.error('No run_id in response:', startData);
+            return res.status(500).json({ error: 'No run_id in Gumloop response' });
+        }
+
+        // Poll for completion (matching youtube-recipe.py timeout)
+        const timeout = 120000; // 120 seconds
+        const pollInterval = 2000; // 2 seconds
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < timeout) {
+            const pollUrl = `${BASE_URL}/get_pl_run?run_id=${runId}&user_id=${USER_ID}&api_key=${API_KEY}`;
+            const pollResponse = await fetch(pollUrl, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const pollData = await pollResponse.json();
+            const state = pollData.state;
+            console.log('Pipeline state:', state);
+            console.log('Full poll response:', JSON.stringify(pollData).substring(0, 200));
+
+            if (state === 'DONE') {
+                const recipe = extractRecipeFromLogs(pollData);
+                console.log('Recipe extracted:', recipe.name);
+                console.log('Ingredients count:', recipe.ingredients?.length || 0);
+                console.log('First ingredient:', JSON.stringify(recipe.ingredients?.[0] || {}));
+                return res.json({ recipe });
+            }
+
+            if (state === 'FAILED') {
+                console.error('Pipeline failed:', pollData);
+                return res.status(500).json({ error: 'Gumloop pipeline failed', details: pollData });
+            }
+
+            // Wait before next poll
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        }
+
+        console.error('Pipeline timeout after 120 seconds');
+        return res.status(408).json({ error: 'Pipeline timeout after 120 seconds' });
+    } catch (error) {
+        console.error('Error processing YouTube recipe:', error);
+        return res.status(500).json({ error: 'Failed to process YouTube recipe', details: error.message });
+    }
+});
+
+// Helper function to extract recipe from Gumloop logs
+function extractRecipeFromLogs(runResponse) {
+    const logs = runResponse.log || [];
+    const extractedData = {};
+
+    function cleanValue(value) {
+        if (typeof value === 'string') {
+            const cleaned = value.trim();
+            if (cleaned.toLowerCase() === 'unknown' || cleaned.toLowerCase() === 'n/a' || cleaned.toLowerCase() === 'na') {
+                return '';
+            }
+            return cleaned;
+        }
+        return value;
+    }
+
+    // Parse log entries
+    for (const logEntry of logs) {
+        if (logEntry.includes("__standard__: Key item") && logEntry.includes("extracted successfully:")) {
+            const match = logEntry.match(/__standard__: Key item '([^']+)' extracted successfully: (.+)/s);
+            if (match) {
+                const key = match[1];
+                const value = cleanValue(match[2]);
+                extractedData[key] = value;
+            }
+        }
+    }
+
+    // Build recipe JSON
+    const recipe = {};
+
+    if (extractedData.name) recipe.name = extractedData.name;
+    if (extractedData.description) recipe.description = extractedData.description;
+    if (extractedData.imageUrl) recipe.imageUrl = extractedData.imageUrl;
+    if (extractedData.sourceUrl) recipe.sourceUrl = extractedData.sourceUrl;
+    if (extractedData.sourceType) recipe.sourceType = extractedData.sourceType;
+
+    // Numeric fields
+    if (extractedData.prepTime) {
+        try { recipe.prepTime = parseInt(extractedData.prepTime); } catch (e) {}
+    }
+    if (extractedData.cookTime) {
+        try { recipe.cookTime = parseInt(extractedData.cookTime); } catch (e) {}
+    }
+    if (extractedData.servings) {
+        try { recipe.servings = parseInt(extractedData.servings); } catch (e) {}
+    }
+    if (extractedData.difficulty) recipe.difficulty = extractedData.difficulty;
+    if (extractedData.cuisine) recipe.cuisine = extractedData.cuisine;
+
+    // Array fields
+    if (extractedData.tags) {
+        try {
+            const tags = JSON.parse(extractedData.tags);
+            const cleanedTags = tags.map(cleanValue).filter(Boolean);
+            if (cleanedTags.length) recipe.tags = cleanedTags;
+        } catch (e) {}
+    }
+
+    if (extractedData.ingredients) {
+        try {
+            const ingredients = JSON.parse(extractedData.ingredients);
+            ingredients.forEach(ing => {
+                ['itemId', 'unit', 'notes'].forEach(key => {
+                    if (ing[key]) ing[key] = cleanValue(ing[key]);
+                });
+                if (ing.quantity) {
+                    const cleaned = cleanValue(String(ing.quantity));
+                    try {
+                        ing.quantity = parseFloat(cleaned);
+                    } catch (e) {
+                        ing.quantity = '';
+                    }
+                }
+            });
+            recipe.ingredients = ingredients;
+        } catch (e) {}
+    }
+
+    if (extractedData.instructions) {
+        try {
+            const instructions = JSON.parse(extractedData.instructions);
+            instructions.forEach(inst => {
+                if (inst.instruction) inst.instruction = cleanValue(inst.instruction);
+                if (inst.imageUrl) inst.imageUrl = cleanValue(inst.imageUrl);
+            });
+            recipe.instructions = instructions;
+        } catch (e) {}
+    }
+
+    // Nutritional info
+    const nutritionalInfo = {};
+    const nutritionalFields = ['totalCalories', 'caloriesPerServing', 'protein', 'carbs', 'fat', 'fiber', 'sugar', 'sodium'];
+    for (const field of nutritionalFields) {
+        if (extractedData[field]) {
+            try {
+                const value = parseFloat(extractedData[field]);
+                if (value > 0) nutritionalInfo[field] = value;
+            } catch (e) {}
+        }
+    }
+    if (Object.keys(nutritionalInfo).length) recipe.nutritionalInfo = nutritionalInfo;
+
+    return recipe;
+}
+
 module.exports = router;

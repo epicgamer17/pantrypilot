@@ -74,6 +74,7 @@ export default function RecipesScreen() {
     const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
     const [newRecipeName, setNewRecipeName] = useState('');
     const [isPublicRecipe, setIsPublicRecipe] = useState(false);
+    const [newInstructionsText, setNewInstructionsText] = useState('');
 
     const [currentIngName, setCurrentIngName] = useState('');
     const [currentIngItemId, setCurrentIngItemId] = useState<string | null>(null);
@@ -106,7 +107,7 @@ export default function RecipesScreen() {
                 .then(res => res.json())
                 .then(async data => {
                     const normalized = Array.isArray(data)
-                        ? data.map((r: any) => ({ ...r, id: r.id || r._id }))
+                        ? data.map((r: any) => ({ ...r, id: String(r.id ?? r._id) }))
                         : [];
                     const ingredientIds = new Set<string>();
                     normalized.forEach((recipe: any) => {
@@ -337,6 +338,26 @@ export default function RecipesScreen() {
         return sorted;
     };
 
+    const buildInstructionText = (instructions?: Recipe['instructions']) => {
+        if (!instructions) return '';
+        if (Array.isArray(instructions)) {
+            return instructions
+                .map((entry) =>
+                    typeof entry === 'string' ? entry : entry.instruction,
+                )
+                .filter(Boolean)
+                .join('\n');
+        }
+        return '';
+    };
+
+    const parseInstructions = (value: string) =>
+        value
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((instruction, index) => ({ stepNumber: index + 1, instruction }));
+
     const handleCookPress = (recipe: Recipe) => {
         const baseServings = Number(recipe.servings) || 1;
         let maxServings = Infinity;
@@ -402,6 +423,7 @@ export default function RecipesScreen() {
             if (!recipe?.name || !Array.isArray(recipe.ingredients)) {
                 return;
             }
+            const instructionsText = buildInstructionText(recipe.instructions);
             const resolvedIngredients = await Promise.all(
                 recipe.ingredients.map(async (ingredient: Ingredient) => {
                     const resolved = await ensureItemByName(
@@ -422,6 +444,7 @@ export default function RecipesScreen() {
             setEditingRecipeId(null);
             setNewRecipeName(recipe.name);
             setNewIngredients(resolvedIngredients);
+            setNewInstructionsText(instructionsText);
             setIsPublicRecipe(false);
             setModalVisible(true);
         } catch (error) {
@@ -486,6 +509,7 @@ export default function RecipesScreen() {
         setNewRecipeName(recipe.name);
         setNewIngredients(recipe.ingredients.map(i => ({ ...i })));
         setIsPublicRecipe(!!recipe.isPublic);
+        setNewInstructionsText(buildInstructionText(recipe.instructions));
         setModalVisible(true);
     };
 
@@ -505,6 +529,7 @@ export default function RecipesScreen() {
         setNewRecipeName('');
         setNewIngredients([]);
         setIsPublicRecipe(false);
+        setNewInstructionsText('');
         setModalVisible(true);
     };
 
@@ -550,6 +575,7 @@ export default function RecipesScreen() {
             id: editingRecipeId || Math.random().toString(),
             name: newRecipeName,
             ingredients: newIngredients,
+            instructions: parseInstructions(newInstructionsText),
             isPublic: isPublicRecipe
         };
 
@@ -563,6 +589,7 @@ export default function RecipesScreen() {
         setNewRecipeName('');
         setNewIngredients([]);
         setIsPublicRecipe(false);
+        setNewInstructionsText('');
         setEditingRecipeId(null);
         setModalVisible(false);
     };
@@ -761,7 +788,7 @@ export default function RecipesScreen() {
 
             {/* Modal for Creating/Editing Recipe */}
             <Modal visible={modalVisible} animationType="slide">
-                <View style={styles.modalContainer}>
+                <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContainer}>
                     <Text style={Typography.header}>{editingRecipeId ? 'Edit Recipe' : 'New Recipe'}</Text>
                     <Text style={Typography.label}>Recipe Name</Text>
                     <TextInput style={styles.input} placeholder="e.g. Stew" value={newRecipeName} onChangeText={setNewRecipeName} />
@@ -842,11 +869,20 @@ export default function RecipesScreen() {
                         ))}
                     </ScrollView>
 
+                    <Text style={[Typography.label, { marginTop: 16 }]}>Instructions</Text>
+                    <TextInput
+                        style={[styles.input, styles.instructionsInput]}
+                        placeholder="One step per line"
+                        value={newInstructionsText}
+                        onChangeText={setNewInstructionsText}
+                        multiline
+                    />
+
                     <View style={styles.modalActions}>
                         <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
                         <TouchableOpacity onPress={saveRecipe} style={styles.saveBtn}><Text style={styles.saveText}>{editingRecipeId ? 'Update' : 'Save'} Recipe</Text></TouchableOpacity>
                     </View>
-                </View>
+                </ScrollView>
             </Modal>
 
             {/* Modal for Creating Item */}
@@ -947,7 +983,8 @@ export default function RecipesScreen() {
             <Modal visible={detailsModalVisible} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.createItemCard}>
-                        <Text style={Typography.subHeader}>{recipeToView?.name}</Text>
+                        <ScrollView contentContainerStyle={styles.detailsScroll}>
+                            <Text style={Typography.subHeader}>{recipeToView?.name}</Text>
                         {recipeToView?.sourceUrl ? (
                             <TouchableOpacity
                                 onPress={async () => {
@@ -964,7 +1001,7 @@ export default function RecipesScreen() {
                             </TouchableOpacity>
                         ) : null}
                         <Text style={[Typography.label, { marginTop: 16 }]}>Ingredients</Text>
-                        <ScrollView style={{ maxHeight: 240, marginTop: 8 }}>
+                        <View style={{ marginTop: 8 }}>
                             {(() => {
                                 const ingredients = recipeToView?.ingredients || [];
                                 const groups = groupIngredientsBySource(ingredients);
@@ -991,12 +1028,25 @@ export default function RecipesScreen() {
                                     </View>
                                 );
                             })()}
-                        </ScrollView>
+                        </View>
+
+                        <Text style={[Typography.label, { marginTop: 16 }]}>Instructions</Text>
+                        <View style={{ marginTop: 8 }}>
+                            {buildInstructionText(recipeToView?.instructions)
+                                .split('\n')
+                                .filter(Boolean)
+                                .map((line, index) => (
+                                    <Text key={`${line}-${index}`} style={styles.instructionLine}>
+                                        {index + 1}. {line}
+                                    </Text>
+                                ))}
+                        </View>
                         <View style={styles.modalActions}>
                             <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={styles.cancelBtn}>
                                 <Text style={styles.cancelText}>Close</Text>
                             </TouchableOpacity>
                         </View>
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -1117,7 +1167,10 @@ const styles = StyleSheet.create({
 
     // Modal Styles
     modalContainer: { flex: 1, padding: 30, paddingTop: 80, backgroundColor: Colors.light.card },
+    modalScroll: { flex: 1 },
+    detailsScroll: { paddingBottom: 12 },
     input: { borderWidth: 1, borderColor: Colors.light.border, borderRadius: BorderRadius.s, padding: 12, fontSize: 16, marginBottom: 20, backgroundColor: Colors.light.background },
+    instructionsInput: { minHeight: 120, textAlignVertical: 'top' },
 
     switchRow: {
         flexDirection: 'row',
@@ -1159,6 +1212,7 @@ const styles = StyleSheet.create({
     ingList: { maxHeight: 200, marginBottom: 30, backgroundColor: Colors.light.background, padding: 10, borderRadius: BorderRadius.s },
     ingItemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
     ingItemText: { fontSize: 16, color: Colors.light.text },
+    instructionLine: { fontSize: 14, color: Colors.light.textSecondary, marginBottom: 6 },
     modalActions: { flexDirection: 'row', gap: 15 },
     cancelBtn: { flex: 1, padding: 15, borderRadius: 10, backgroundColor: Colors.light.secondary, alignItems: 'center' },
     saveBtn: { flex: 2, padding: 15, borderRadius: 10, backgroundColor: Colors.light.primary, alignItems: 'center' },

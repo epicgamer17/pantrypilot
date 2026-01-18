@@ -22,6 +22,38 @@ export const createRecipeActions = ({
   setRecipes,
   apiUrl,
 }: RecipeDeps) => {
+  const normalizeInstructions = (instructions?: Recipe['instructions']) => {
+    if (!instructions) return [];
+    if (!Array.isArray(instructions)) return [];
+    return instructions
+      .map((entry, index) => {
+        if (typeof entry === 'string') {
+          const trimmed = entry.trim();
+          return trimmed
+            ? { stepNumber: index + 1, instruction: trimmed }
+            : null;
+        }
+        if (entry && typeof entry === 'object') {
+          const typed = entry as { instruction?: string; stepNumber?: number };
+          const instruction = typed.instruction?.trim?.() ?? '';
+          if (!instruction) return null;
+          return {
+            stepNumber: Number.isFinite(Number(typed.stepNumber))
+              ? Number(typed.stepNumber)
+              : index + 1,
+            instruction,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean) as { stepNumber: number; instruction: string }[];
+  };
+
+  const normalizeServings = (servings?: Recipe['servings']) => {
+    const parsed = Number(servings);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
   const addRecipe = async (recipe: Recipe) => {
     if (!userId || !householdId) return;
 
@@ -47,15 +79,19 @@ export const createRecipeActions = ({
         body: JSON.stringify({
           name: recipe.name,
           ingredients: payloadIngredients,
+          instructions: normalizeInstructions(recipe.instructions),
           householdId: householdId,
           isPublic: (recipe as { isPublic?: boolean }).isPublic,
-          servings: recipe.servings,
+          servings: normalizeServings(recipe.servings),
         }),
       });
 
       if (res.ok) {
         const savedRecipe = await res.json();
-        setRecipes((prev) => [...prev, { ...savedRecipe, id: savedRecipe.id || savedRecipe._id }]);
+        setRecipes((prev) => [
+          ...prev,
+          { ...savedRecipe, id: String(savedRecipe.id ?? savedRecipe._id) },
+        ]);
       } else {
         throw new Error('Failed to save recipe');
       }
@@ -91,9 +127,10 @@ export const createRecipeActions = ({
         body: JSON.stringify({
           name: recipe.name,
           ingredients: payloadIngredients,
+          instructions: normalizeInstructions(recipe.instructions),
           householdId: householdId,
           isPublic: (recipe as { isPublic?: boolean }).isPublic,
-          servings: recipe.servings,
+          servings: normalizeServings(recipe.servings),
         }),
       });
 
@@ -110,12 +147,14 @@ export const createRecipeActions = ({
   };
 
   const deleteRecipe = async (id: string) => {
-    if (!userId || !householdId) return;
+    if (!userId) return;
+    const resolvedId = String(id || '').trim();
+    if (!resolvedId) return;
 
-    setRecipes((prev) => prev.filter((recipe) => recipe.id !== id));
+    setRecipes((prev) => prev.filter((recipe) => recipe.id !== resolvedId));
 
     try {
-      const res = await fetch(`${apiUrl}/recipes/${id}`, {
+      const res = await fetch(`${apiUrl}/recipes/${resolvedId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });

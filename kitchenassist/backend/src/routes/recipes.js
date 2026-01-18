@@ -3,7 +3,7 @@ const { ObjectId } = require('mongodb');
 const { omitUndefined } = require('./utils');
 
 const router = express.Router();
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 const buildGeminiPrompt = (fridgeItems) => {
     const itemSchema = {
@@ -28,7 +28,7 @@ const buildGeminiPrompt = (fridgeItems) => {
     return [
         'You are a recipe generator.',
         'Return ONLY valid JSON (no markdown) that conforms to the recipe schema below.',
-        'Use only ingredients that can be reasonably made from the fridge items list.',
+        'Use only ingredients that can be reasonably made from the fridge items list. You do not have to use every item; focus on making a good simple meal.',
         'Use realistic quantities and units.',
         '',
         `Recipe schema: ${JSON.stringify(recipeSchema)}`,

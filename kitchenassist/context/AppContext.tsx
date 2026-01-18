@@ -39,6 +39,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const STORAGE_KEYS = {
         householdId: 'app.householdId',
         recentItems: 'app.recentItems',
+        cachedRecipes: 'app.cachedRecipes',
+        cachedGroceryList: 'app.cachedGroceryList',
     };
     // Auth State
     const [userId, setUserId] = useState<string | null>(null);
@@ -152,6 +154,44 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         restoreData();
     }, []);
 
+    const buildCacheKey = (base: string, uid?: string | null, hid?: string | null) => {
+        if (!uid || !hid) return null;
+        return `${base}.${uid}.${hid}`;
+    };
+
+    useEffect(() => {
+        const restoreCachedLists = async () => {
+            if (!userId || !householdId) return;
+            const recipesKey = buildCacheKey(STORAGE_KEYS.cachedRecipes, userId, householdId);
+            const groceryKey = buildCacheKey(STORAGE_KEYS.cachedGroceryList, userId, householdId);
+            if (!recipesKey || !groceryKey) return;
+            try {
+                const [recipesEntry, groceryEntry] = await AsyncStorage.multiGet([
+                    recipesKey,
+                    groceryKey,
+                ]);
+                const cachedRecipes = recipesEntry?.[1];
+                const cachedGrocery = groceryEntry?.[1];
+
+                if (!recipes.length && cachedRecipes) {
+                    const parsed = JSON.parse(cachedRecipes);
+                    if (Array.isArray(parsed)) {
+                        setRecipes(parsed);
+                    }
+                }
+                if (!groceryList.length && cachedGrocery) {
+                    const parsed = JSON.parse(cachedGrocery);
+                    if (Array.isArray(parsed)) {
+                        setGroceryList(parsed);
+                    }
+                }
+            } catch (error) {
+                return;
+            }
+        };
+        restoreCachedLists();
+    }, [userId, householdId]);
+
     useEffect(() => {
         if (!householdId) {
             AsyncStorage.removeItem(STORAGE_KEYS.householdId).catch(() => null);
@@ -169,6 +209,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             JSON.stringify(recentlyDepletedItems),
         ).catch(() => null);
     }, [recentlyDepletedItems]);
+
+    useEffect(() => {
+        if (!userId || !householdId) return;
+        const recipesKey = buildCacheKey(STORAGE_KEYS.cachedRecipes, userId, householdId);
+        const groceryKey = buildCacheKey(STORAGE_KEYS.cachedGroceryList, userId, householdId);
+        if (!recipesKey || !groceryKey) return;
+        AsyncStorage.multiSet([
+            [recipesKey, JSON.stringify(recipes)],
+            [groceryKey, JSON.stringify(groceryList)],
+        ]).catch(() => null);
+    }, [recipes, groceryList, userId, householdId]);
 
     // Helper: Refresh all data
     const refreshData = async () => {
@@ -237,7 +288,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 const data = await recipesRes.json();
                 const normalizedRecipes = data.map((r: any) => ({
                     ...r,
-                    id: r.id || r._id,
+                    id: String(r.id ?? r._id),
                 }));
                 const ingredientIds = new Set<string>();
                 normalizedRecipes.forEach((recipe: any) => {
@@ -317,7 +368,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                             return {
                                 id: itemId,
                                 itemId,
-                                name: details?.name || 'Item',
+                                name: fallbackName || 'Item',
                                 aisle: details?.category || 'General',
                                 targetPrice: estimatedPrice,
                                 bestStoreName: priceLeader?.storeName ?? fallbackStoreName,
@@ -415,10 +466,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             refreshData();
             return;
         }
-        // Clear data if logged out / no household
-        setFridgeItems([]);
-        setGroceryList([]);
-        setRecipes([]);
+        if (!userId) {
+            setFridgeItems([]);
+            setGroceryList([]);
+            setRecipes([]);
+        }
     }, [userId, householdId]);
 
     useEffect(() => {

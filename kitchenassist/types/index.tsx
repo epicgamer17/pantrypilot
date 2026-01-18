@@ -51,7 +51,7 @@ export interface Recipe {
     id: string;
     name: string;
     ingredients: Ingredient[];
-    instructions?: string;
+    instructions?: { stepNumber: number; instruction: string }[] | string[];
     isAiGenerated?: boolean;
     isPublic?: boolean;
     sourceUrl?: string;

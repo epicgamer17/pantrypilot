@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
+import { StyleSheet, TouchableOpacity, Switch, Platform, ActivityIndicator } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
@@ -7,12 +7,14 @@ import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../constants
 import { API_BASE_URL, AUTH0_CLIENT_ID, AUTH0_DOMAIN } from '../constants/auth0';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
+import { ThemedView } from '../components/themed-view';
+import { ThemedText } from '../components/themed-text';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
     const router = useRouter();
-    const { signIn, userToken } = useAuth(); // <- read userToken here
+    const { signIn, userToken } = useAuth();
     const { setUserId, setHouseholdId } = useApp();
     const [authError, setAuthError] = useState<string | null>(null);
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -44,7 +46,6 @@ export default function LoginScreen() {
         }
     }, [userToken, router]);
 
-
     useEffect(() => {
         if (response?.type === 'error') {
             setAuthError(response.error?.message ?? 'Authentication failed.');
@@ -54,7 +55,6 @@ export default function LoginScreen() {
     useEffect(() => {
         const handleAuth = async () => {
             if (response?.type !== 'success') return;
-            console.log('Auth response:', response);
             setIsSigningIn(true);
             setAuthError(null);
 
@@ -65,18 +65,14 @@ export default function LoginScreen() {
                 const accessToken = response.authentication?.accessToken ?? response.params.access_token;
                 if (!accessToken) throw new Error('Missing access token.');
 
-                // 1. Fetch User Info from Auth0
                 const userInfoResponse = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, {
                     headers: { Authorization: `Bearer ${accessToken}` },
                     signal: controller.signal,
                 });
 
-                console.log('User info response:', userInfoResponse);
-
                 if (!userInfoResponse.ok) throw new Error('Failed to fetch user info.');
                 const profile = await userInfoResponse.json();
 
-                // 2. Create/Update User in your Backend
                 const createResponse = await fetch(`${API_BASE_URL}/users/auth0`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -96,7 +92,6 @@ export default function LoginScreen() {
 
                 if (!createResponse.ok) throw new Error('Failed to create user.');
 
-                // Parse the backend user object to check for householdId
                 const backendUser = await createResponse.json();
                 const resolvedHouseholdId =
                     backendUser.householdId?.$oid ??
@@ -109,12 +104,9 @@ export default function LoginScreen() {
                     backendUser._id?.toString?.() ??
                     backendUser._id ??
                     backendUser.id;
-                if (!resolvedUserId) {
-                    throw new Error('Missing user id from backend.');
-                }
-                console.log('User has household:', hasHousehold);
-                // 3. Update Global Auth State
-                // Pass true/false so AuthContext knows where to redirect
+
+                if (!resolvedUserId) throw new Error('Missing user id from backend.');
+
                 signIn(accessToken, hasHousehold, String(resolvedUserId));
                 setUserId(String(resolvedUserId));
                 setHouseholdId(hasHousehold ? String(resolvedHouseholdId) : null);
@@ -134,92 +126,137 @@ export default function LoginScreen() {
     }, [response]);
 
     return (
-        <View style={styles.container}>
-            <View style={styles.content}>
-                <Text style={Typography.header}>KitchenAssist</Text>
+        <ThemedView style={styles.container}>
+            <ThemedView style={styles.content}>
+                <ThemedText type="title" style={styles.headerText}>Pantry Pilot</ThemedText>
 
-                <View style={styles.authCard}>
-                    <Text style={Typography.subHeader}>Welcome Back</Text>
-                    <Text style={Typography.body}>
-                        Sign in to manage your fridge, grocery lists, and recipes.
-                    </Text>
+                <ThemedView style={styles.authCard}>
+                    <ThemedText type="subtitle">Welcome Back</ThemedText>
+                    <ThemedText style={styles.description}>
+                        Sign in to manage your fridge, grocery lists, and smart recipes.
+                    </ThemedText>
 
-                    <View style={styles.gmailToggleRow}>
-                        <View style={styles.gmailToggleText}>
-                            <Text style={Typography.body}>Enable Gmail read-only</Text>
-                            <Text style={styles.gmailToggleHint}>
-                                Optional. Lets us read your Gmail metadata when you opt in.
-                            </Text>
-                        </View>
+                    <ThemedView style={styles.gmailToggleRow}>
+                        <ThemedView style={styles.gmailToggleText}>
+                            <ThemedText type="defaultSemiBold">Enable Gmail integration</ThemedText>
+                            <ThemedText style={styles.gmailToggleHint}>
+                                Optional. Automatically sync grocery items from receipts.
+                            </ThemedText>
+                        </ThemedView>
                         <Switch
                             value={gmailOptIn}
                             onValueChange={setGmailOptIn}
                             disabled={isSigningIn}
+                            trackColor={{ false: Colors.light.border, true: Colors.light.tint }}
                         />
-                    </View>
+                    </ThemedView>
 
                     <TouchableOpacity
-                        style={[styles.authButton, isSigningIn && styles.authButtonDisabled]}
+                        style={[
+                            styles.authButton,
+                            isSigningIn && styles.authButtonDisabled,
+                            { backgroundColor: Colors.light.tint }
+                        ]}
                         disabled={!request || isSigningIn}
                         onPress={() => {
                             setAuthError(null);
                             promptAsync();
                         }}
                     >
-                        <Text style={styles.authButtonText}>
-                            {isSigningIn ? 'Signing in...' : 'Continue with Auth0'}
-                        </Text>
+                        {isSigningIn ? (
+                            <ActivityIndicator color="white" />
+                        ) : (
+                            <ThemedText style={styles.authButtonText}>Continue with Auth0</ThemedText>
+                        )}
                     </TouchableOpacity>
 
-                    {authError && <Text style={styles.authError}>{authError}</Text>}
-                </View>
-            </View>
-        </View>
+                    {authError && (
+                        <ThemedText style={styles.authError}>{authError}</ThemedText>
+                    )}
+                </ThemedView>
+
+                <ThemedText style={styles.footerCaption}>
+                    Secure login powered by Auth0
+                </ThemedText>
+            </ThemedView>
+        </ThemedView>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.light.background,
         justifyContent: 'center',
         padding: Spacing.xl,
     },
     content: {
         gap: Spacing.xl,
-        maxWidth: 500,
+        maxWidth: 480, // Optimized for desktop readability
         width: '100%',
         alignSelf: 'center',
+        backgroundColor: 'transparent',
+    },
+    headerText: {
+        textAlign: 'center',
+        marginBottom: Spacing.m,
+        color: Colors.light.tint,
     },
     authCard: {
         backgroundColor: Colors.light.card,
-        borderRadius: BorderRadius.l,
-        padding: Spacing.l,
-        gap: Spacing.m,
-        ...Shadows.default,
+        borderRadius: BorderRadius.xl,
+        padding: Spacing.xl,
+        gap: Spacing.l,
+        ...Shadows.strong, // Elevated card design
+    },
+    description: {
+        opacity: 0.8,
+        marginBottom: Spacing.s,
     },
     gmailToggleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
+        padding: Spacing.m,
+        backgroundColor: Colors.light.primaryBg,
+        borderRadius: BorderRadius.m,
         gap: Spacing.m,
     },
     gmailToggleText: {
         flex: 1,
+        backgroundColor: 'transparent',
     },
     gmailToggleHint: {
-        color: Colors.light.textSecondary,
-        marginTop: Spacing.xs,
         fontSize: 12,
+        opacity: 0.6,
+        marginTop: 2,
     },
     authButton: {
-        backgroundColor: Colors.light.tint,
-        paddingVertical: Spacing.m,
+        paddingVertical: Spacing.l,
         borderRadius: BorderRadius.m,
         alignItems: 'center',
-        marginTop: Spacing.s,
+        marginTop: Spacing.m,
+        ...Platform.select({
+            web: { cursor: 'pointer' } as any,
+        }),
     },
-    authButtonDisabled: { opacity: 0.6 },
-    authButtonText: { color: 'white', fontWeight: '700', fontSize: 16 },
-    authError: { color: Colors.light.danger, marginTop: Spacing.xs, textAlign: 'center' },
+    authButtonDisabled: {
+        opacity: 0.6
+    },
+    authButtonText: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 16
+    },
+    authError: {
+        color: Colors.light.danger,
+        marginTop: Spacing.xs,
+        textAlign: 'center',
+        fontSize: 14,
+    },
+    footerCaption: {
+        textAlign: 'center',
+        fontSize: 12,
+        opacity: 0.5,
+        backgroundColor: 'transparent',
+    }
 });

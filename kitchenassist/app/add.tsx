@@ -4,30 +4,31 @@ import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator
 } from 'react-native';
 
 import {
-    BorderRadius,
-    Colors,
-    Shadows,
-    Spacing,
-    Typography,
+  BorderRadius,
+  Colors,
+  Shadows,
+  Spacing,
+  Typography,
 } from '../constants/theme';
 import { API_BASE_URL } from '../constants/auth0';
 import { useApp } from '../context/AppContext';
 import ItemNameAutocomplete from '../components/ItemNameAutocomplete';
-import { Category, Item } from '../types'; // Import types
+import { Category, Item } from '../types';
+import { ThemedView } from '../components/themed-view';
+import { ThemedText } from '../components/themed-text';
 
-// Typed arrays to match Item interface
 const CATEGORIES: Category[] = [
   'Produce',
   'Dairy',
@@ -48,7 +49,6 @@ export default function AddItemScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Explicitly Typed Form State
   const [name, setName] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState('');
@@ -89,10 +89,7 @@ export default function AddItemScreen() {
     setUploadError(null);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-        'Permission required',
-        'Please allow photo access to upload a receipt.',
-      );
+      Alert.alert('Permission required', 'Please allow photo access to upload a receipt.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -126,17 +123,11 @@ export default function AddItemScreen() {
         } as any);
       }
 
-      const res = await fetch(
-        `${API_BASE_URL}/households/${householdId}/receipts`,
-        {
-          method: 'POST',
-          headers: {
-            'x-user-id': userId,
-            'x-household-id': householdId,
-          },
-          body: formData,
-        },
-      );
+      const res = await fetch(`${API_BASE_URL}/households/${householdId}/receipts`, {
+        method: 'POST',
+        headers: { 'x-user-id': userId, 'x-household-id': householdId },
+        body: formData,
+      });
 
       if (!res.ok) {
         const err = await res.json();
@@ -147,8 +138,7 @@ export default function AddItemScreen() {
       Alert.alert('Receipt processed', 'Items have been added to your fridge.');
       router.back();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Upload failed.';
-      setUploadError(message);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed.');
     } finally {
       setIsUploading(false);
     }
@@ -156,392 +146,291 @@ export default function AddItemScreen() {
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setExpiryDate(selectedDate);
-    }
+    if (selectedDate) setExpiryDate(selectedDate);
   };
 
+  const categoryEmoji = (cat: Category) => {
+    switch (cat) {
+      case 'Produce': return '🥦';
+      case 'Dairy': return '🥛';
+      case 'Meat': return '🥩';
+      case 'Frozen': return '🧊';
+      case 'Beverages': return '🥤';
+      case 'Pantry': return '🥫';
+      default: return '📦';
+    }
+  }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1 }}
-    >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={{ paddingBottom: 140 }}
+    <ThemedView style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <MaterialCommunityIcons
-              name="arrow-left"
-              size={24}
-              color={Colors.light.text}
-            />
-          </TouchableOpacity>
-          <Text style={Typography.header}>Add Item</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === 'manual' && styles.tabButtonActive,
-            ]}
-            onPress={() => setActiveTab('manual')}
-          >
-            <Text
-              style={[styles.tabText, activeTab === 'manual' && styles.tabTextActive]}
-            >
-              Manual
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === 'receipt' && styles.tabButtonActive,
-            ]}
-            onPress={() => setActiveTab('receipt')}
-          >
-            <Text
-              style={[styles.tabText, activeTab === 'receipt' && styles.tabTextActive]}
-            >
-              Receipt
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {activeTab === 'manual' && (
-        <View style={styles.form}>
-          {/* Name Input */}
-          <Text style={Typography.label}>Item Name</Text>
-          <ItemNameAutocomplete
-            value={name}
-            placeholder="e.g. Milk, Avocados"
-            autoFocus
-            inputStyle={styles.input}
-            onChangeText={(value) => {
-              setName(value);
-              setSelectedItemId(null);
-            }}
-            onSelectItem={(item) => {
-              setName(item.name);
-              setSelectedItemId(item.id);
-            }}
-          />
-
-          {/* Quantity Row */}
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: Spacing.m }}>
-              <Text style={Typography.label}>Quantity</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="0"
-                keyboardType="numeric"
-                value={quantity}
-                onChangeText={setQuantity}
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={Typography.label}>Unit</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.unitScroll}
-                contentContainerStyle={{ alignItems: 'center' }}
-              >
-                {UNITS.map((u) => (
-                  <TouchableOpacity
-                    key={u}
-                    style={[styles.chip, unit === u && styles.chipActive]}
-                    onPress={() => setUnit(u)}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        unit === u && styles.chipTextActive,
-                      ]}
-                    >
-                      {u}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-
-          {/* Category Selection */}
-          <Text style={Typography.label}>Category</Text>
-          <View style={styles.categoryGrid}>
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryCard,
-                  category === cat && styles.categoryCardActive,
-                ]}
-                onPress={() => setCategory(cat)}
-              >
-                <Text
-                  style={[
-                    styles.categoryText,
-                    category === cat && styles.categoryTextActive,
-                  ]}
-                >
-                  {cat}
-                </Text>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <ThemedView style={styles.contentWrapper}>
+            {/* Header */}
+            <ThemedView style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+                <MaterialCommunityIcons name="chevron-left" size={32} color={Colors.light.text} />
               </TouchableOpacity>
-            ))}
-          </View>
+              <ThemedText type="title">Add Item</ThemedText>
+              <View style={{ width: 44 }} />
+            </ThemedView>
 
-          {/* Expiry Date */}
-          <Text style={Typography.label}>Expiry Date</Text>
-          <TouchableOpacity
-            style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <MaterialCommunityIcons
-              name="calendar"
-              size={20}
-              color={Colors.light.primary}
-            />
-            <Text style={styles.dateText}>{expiryDate.toDateString()}</Text>
-          </TouchableOpacity>
+            {/* Tabs */}
+            <ThemedView style={styles.tabContainer}>
+              {(['manual', 'receipt'] as const).map((tab) => (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tabPill, activeTab === tab && styles.tabPillActive]}
+                  onPress={() => setActiveTab(tab)}
+                >
+                  <ThemedText style={[styles.tabPillText, activeTab === tab && styles.tabPillTextActive]}>
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </ThemedText>
+                </TouchableOpacity>
+              ))}
+            </ThemedView>
 
-          {(showDatePicker || Platform.OS === 'ios') && (
-            <View
-              style={Platform.OS === 'ios' ? styles.iosDatePicker : undefined}
-            >
-              <DateTimePicker
-                value={expiryDate}
-                mode="date"
-                display="default"
-                onChange={handleDateChange}
-                minimumDate={new Date()}
-              />
-            </View>
-          )}
-        </View>
-        )}
+            {activeTab === 'manual' ? (
+              <ThemedView style={styles.formCard}>
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="defaultSemiBold">Item Name</ThemedText>
+                  <ItemNameAutocomplete
+                    value={name}
+                    placeholder="e.g. Greek Yogurt, Apples"
+                    autoFocus
+                    inputStyle={styles.themedInput}
+                    onChangeText={(value) => { setName(value); setSelectedItemId(null); }}
+                    onSelectItem={(item) => { setName(item.name); setSelectedItemId(item.id); }}
+                  />
+                </ThemedView>
 
-        {activeTab === 'receipt' && (
-          <View style={styles.form}>
-            <Text style={Typography.subHeader}>Upload a receipt</Text>
-            <Text style={Typography.body}>
-              We will scan the receipt and add items to your fridge.
-            </Text>
-            <TouchableOpacity style={styles.secondaryButton} onPress={pickReceipt}>
-              <Text style={styles.secondaryButtonText}>
-                {selectedReceipt ? 'Change receipt' : 'Choose receipt'}
-              </Text>
-            </TouchableOpacity>
-            {selectedReceipt && (
-              <Text style={styles.receiptName}>
-                Selected: {selectedReceipt.fileName ?? selectedReceipt.uri.split('/').pop()}
-              </Text>
+                <ThemedView style={styles.row}>
+                  <ThemedView style={{ flex: 0.4 }}>
+                    <ThemedText type="defaultSemiBold">Quantity</ThemedText>
+                    <TextInput
+                      style={styles.themedInput}
+                      placeholder="0"
+                      keyboardType="numeric"
+                      value={quantity}
+                      onChangeText={setQuantity}
+                    />
+                  </ThemedView>
+                  <ThemedView style={{ flex: 0.6 }}>
+                    <ThemedText type="defaultSemiBold">Unit</ThemedText>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitList}>
+                      {UNITS.map((u) => (
+                        <TouchableOpacity
+                          key={u}
+                          style={[styles.unitChip, unit === u && styles.unitChipActive]}
+                          onPress={() => setUnit(u)}
+                        >
+                          <ThemedText style={[styles.unitText, unit === u && styles.unitTextActive]}>{u}</ThemedText>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </ThemedView>
+                </ThemedView>
+
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="defaultSemiBold">Category</ThemedText>
+                  <ThemedView style={styles.categoryGrid}>
+                    {CATEGORIES.map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[styles.categoryPill, category === cat && styles.categoryPillActive]}
+                        onPress={() => setCategory(cat)}
+                      >
+                        <ThemedText style={styles.categoryEmoji}>{categoryEmoji(cat)}</ThemedText>
+                        <ThemedText style={[styles.categoryLabel, category === cat && styles.categoryLabelActive]}>
+                          {cat}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    ))}
+                  </ThemedView>
+                </ThemedView>
+
+                <ThemedView style={styles.fieldGroup}>
+                  <ThemedText type="defaultSemiBold">Estimated Expiry</ThemedText>
+                  <TouchableOpacity style={styles.datePickerTrigger} onPress={() => setShowDatePicker(true)}>
+                    <MaterialCommunityIcons name="calendar-clock" size={20} color={Colors.light.tint} />
+                    <ThemedText style={styles.dateDisplay}>{expiryDate.toDateString()}</ThemedText>
+                  </TouchableOpacity>
+
+                  {(showDatePicker || Platform.OS === 'ios') && (
+                    <ThemedView style={Platform.OS === 'ios' ? styles.iosDateContainer : {}}>
+                      <DateTimePicker
+                        value={expiryDate}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={handleDateChange}
+                        minimumDate={new Date()}
+                      />
+                    </ThemedView>
+                  )}
+                </ThemedView>
+              </ThemedView>
+            ) : (
+              <ThemedView style={styles.receiptContainer}>
+                <ThemedView style={styles.receiptActionBox}>
+                  <MaterialCommunityIcons name="receipt" size={64} color={Colors.light.tint} style={{ opacity: 0.3 }} />
+                  <ThemedText type="subtitle" style={{ textAlign: 'center' }}>Receipt Scanner</ThemedText>
+                  <ThemedText style={styles.receiptHint}>
+                    Upload a photo of your grocery receipt and we'll automatically add the items to your pantry.
+                  </ThemedText>
+                  <TouchableOpacity style={styles.pickButton} onPress={pickReceipt}>
+                    <MaterialCommunityIcons name="camera-plus" size={24} color="white" />
+                    <ThemedText style={styles.pickButtonText}>
+                      {selectedReceipt ? 'Replace Photo' : 'Capture Receipt'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {selectedReceipt && (
+                    <ThemedView style={styles.selectionIndicator}>
+                      <MaterialCommunityIcons name="file-check" size={16} color={Colors.light.success} />
+                      <ThemedText style={styles.selectionText}>Ready to upload</ThemedText>
+                    </ThemedView>
+                  )}
+                </ThemedView>
+                {uploadError && <ThemedText style={styles.errorText}>{uploadError}</ThemedText>}
+              </ThemedView>
             )}
-            {uploadError && <Text style={styles.errorText}>{uploadError}</Text>}
-          </View>
-        )}
-      </ScrollView>
+          </ThemedView>
+        </ScrollView>
 
-      {/* Floating Action Button */}
-      {activeTab === 'manual' && (
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <Text style={styles.submitButtonText}>Add to Fridge</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      {activeTab === 'receipt' && (
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.submitButton, isUploading && styles.disabledButton]}
-            onPress={uploadReceipt}
-            disabled={isUploading || !selectedReceipt}
-          >
-            <Text style={styles.submitButtonText}>
-              {isUploading ? 'Uploading...' : 'Upload Receipt'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </KeyboardAvoidingView>
+        {/* Footer Action */}
+        <ThemedView style={styles.footer}>
+          <ThemedView style={styles.footerInner}>
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                (activeTab === 'receipt' && !selectedReceipt) && styles.buttonDisabled
+              ]}
+              onPress={activeTab === 'manual' ? handleSubmit : uploadReceipt}
+              disabled={isUploading || (activeTab === 'receipt' && !selectedReceipt)}
+            >
+              {isUploading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <ThemedText style={styles.primaryButtonText}>
+                  {activeTab === 'manual' ? 'Add Item to Fridge' : 'Process Receipt'}
+                </ThemedText>
+              )}
+            </TouchableOpacity>
+          </ThemedView>
+        </ThemedView>
+      </KeyboardAvoidingView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
+  container: { flex: 1 },
+  scrollContent: { paddingBottom: 160 },
+  contentWrapper: {
     padding: Spacing.l,
-    paddingTop: 60,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: 'transparent'
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: 40,
     marginBottom: Spacing.xl,
+    backgroundColor: 'transparent'
   },
-  backButton: {
-    padding: Spacing.xs,
-  },
-  form: {
-    gap: Spacing.l,
-  },
-  tabs: {
+  iconButton: { padding: Spacing.xs },
+  tabContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.light.secondary,
-    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.border + '40',
+    borderRadius: BorderRadius.circle,
     padding: 4,
-    marginBottom: Spacing.l,
+    marginBottom: Spacing.xl
   },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: BorderRadius.s,
-  },
-  tabButtonActive: { backgroundColor: Colors.light.card, ...Shadows.soft },
-  tabText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 13 },
-  tabTextActive: { color: Colors.light.text },
-  input: {
+  tabPill: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: BorderRadius.circle },
+  tabPillActive: { backgroundColor: Colors.light.card, ...Shadows.soft },
+  tabPillText: { fontSize: 14, fontWeight: '700', color: Colors.light.textMuted },
+  tabPillTextActive: { color: Colors.light.tint },
+  formCard: { gap: Spacing.xl, backgroundColor: 'transparent' },
+  fieldGroup: { gap: Spacing.s, backgroundColor: 'transparent' },
+  themedInput: {
     backgroundColor: Colors.light.card,
-    borderRadius: BorderRadius.m,
+    borderRadius: BorderRadius.l,
     padding: Spacing.m,
     fontSize: 16,
     color: Colors.light.text,
     borderWidth: 1,
     borderColor: Colors.light.border,
-    // Manually applying shadow to avoid ViewStyle/TextStyle conflict
-    shadowColor: '#2D3436',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    ...Shadows.soft,
   },
-  row: {
+  row: { flexDirection: 'row', gap: Spacing.m, backgroundColor: 'transparent' },
+  unitList: { paddingVertical: 4 },
+  unitChip: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: Colors.light.card, borderRadius: BorderRadius.m, marginRight: 8, borderWidth: 1, borderColor: Colors.light.border },
+  unitChipActive: { backgroundColor: Colors.light.tint, borderColor: Colors.light.tint },
+  unitText: { fontSize: 14, fontWeight: '600', color: Colors.light.textSecondary },
+  unitTextActive: { color: 'white' },
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, backgroundColor: 'transparent' },
+  categoryPill: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  unitScroll: {
-    flexDirection: 'row',
-    height: 50,
-  },
-  chip: {
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: Colors.light.card,
-    borderRadius: BorderRadius.m,
-    marginRight: 8,
+    borderRadius: BorderRadius.circle,
     borderWidth: 1,
     borderColor: Colors.light.border,
+    gap: 6
   },
-  chipActive: {
-    backgroundColor: Colors.light.primary,
-    borderColor: Colors.light.primary,
-  },
-  chipText: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-  },
-  chipTextActive: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.s,
-  },
-  categoryCard: {
-    width: '30%',
-    paddingVertical: 12,
-    alignItems: 'center',
-    backgroundColor: Colors.light.card,
-    borderRadius: BorderRadius.m,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-  },
-  categoryCardActive: {
-    backgroundColor: Colors.light.primaryBg, // Now valid
-    borderColor: Colors.light.primary,
-  },
-  categoryText: {
-    fontSize: 13,
-    color: Colors.light.text,
-    fontWeight: '500',
-  },
-  categoryTextActive: {
-    color: Colors.light.primary,
-    fontWeight: 'bold',
-  },
-  dateButton: {
+  categoryPillActive: { backgroundColor: Colors.light.tint + '15', borderColor: Colors.light.tint },
+  categoryEmoji: { fontSize: 16 },
+  categoryLabel: { fontSize: 13, color: Colors.light.textSecondary, fontWeight: '600' },
+  categoryLabelActive: { color: Colors.light.tint },
+  datePickerTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.light.card,
     padding: Spacing.m,
-    borderRadius: BorderRadius.m,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    gap: Spacing.s,
-  },
-  dateText: {
-    fontSize: 16,
-    color: Colors.light.text,
-  },
-  iosDatePicker: {
-    alignItems: 'center',
-    marginTop: Spacing.s,
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: Spacing.l,
-    backgroundColor: Colors.light.background,
-    borderTopWidth: 1,
-    borderTopColor: Colors.light.border,
-  },
-  submitButton: {
-    backgroundColor: Colors.light.primary,
-    paddingVertical: 16,
     borderRadius: BorderRadius.l,
-    alignItems: 'center',
-    ...Shadows.default,
-  },
-  submitButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  secondaryButton: {
-    backgroundColor: Colors.light.card,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.m,
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.light.border,
+    gap: Spacing.s
   },
-  secondaryButtonText: {
-    color: Colors.light.text,
-    fontWeight: '600',
+  dateDisplay: { fontSize: 16, fontWeight: '500' },
+  iosDateContainer: { backgroundColor: Colors.light.card, borderRadius: BorderRadius.l, marginTop: Spacing.s, overflow: 'hidden' },
+  receiptContainer: { paddingVertical: Spacing.xxl, backgroundColor: 'transparent' },
+  receiptActionBox: {
+    backgroundColor: Colors.light.card,
+    borderRadius: 24,
+    padding: Spacing.xxl,
+    alignItems: 'center',
+    gap: Spacing.l,
+    ...Shadows.strong
   },
-  receiptName: {
-    fontSize: 13,
-    color: Colors.light.textSecondary,
+  receiptHint: { textAlign: 'center', color: Colors.light.textMuted, lineHeight: 20 },
+  pickButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: Colors.light.tint,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: BorderRadius.circle,
+    ...Shadows.default
   },
-  errorText: {
-    color: Colors.light.danger,
-    fontSize: 13,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
+  pickButtonText: { color: 'white', fontWeight: '800', fontSize: 16 },
+  selectionIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.light.success + '15', padding: 8, borderRadius: 8 },
+  selectionText: { fontSize: 12, color: Colors.light.success, fontWeight: '800' },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: Spacing.l, backgroundColor: 'transparent' },
+  footerInner: { maxWidth: 600, width: '100%', alignSelf: 'center', backgroundColor: 'transparent' },
+  primaryButton: { backgroundColor: Colors.light.primary, paddingVertical: 18, borderRadius: BorderRadius.xl, alignItems: 'center', ...Shadows.strong },
+  primaryButtonText: { color: 'white', fontSize: 18, fontWeight: '800' },
+  buttonDisabled: { opacity: 0.5 },
+  errorText: { color: Colors.light.danger, textAlign: 'center', marginTop: Spacing.m, fontWeight: '600' }
 });

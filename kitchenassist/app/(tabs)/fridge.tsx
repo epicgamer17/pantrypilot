@@ -36,6 +36,15 @@ export default function FridgeScreen() {
   const availableWidth = width - screenPadding - ((numColumns - 1) * gap);
   const cardWidth = availableWidth / numColumns;
 
+  const openDiscardModal = (item: Item) => {
+    const initial = item.initialQuantity || item.quantity;
+    const rawPercent = initial > 0 ? (item.quantity / initial) * 100 : 0;
+    const roundedPercent = Math.max(0, Math.min(100, Math.round(rawPercent / 5) * 5));
+    setDiscardItem(item);
+    setDiscardPercent(roundedPercent);
+    setDiscardModalVisible(true);
+  };
+
   // Filter & Sort Logic
   const filteredItems = useMemo(() => {
     let items = fridgeItems.filter(i => !i.isUsed);
@@ -59,9 +68,7 @@ export default function FridgeScreen() {
     <TouchableOpacity
       style={styles.deleteAction}
       onPress={() => {
-        setDiscardItem(item);
-        setDiscardPercent(0);
-        setDiscardModalVisible(true);
+        openDiscardModal(item);
         close();
       }}
     >
@@ -262,9 +269,7 @@ export default function FridgeScreen() {
                     <TouchableOpacity
                       style={[styles.webBtn, styles.btnTrash]}
                       onPress={() => {
-                        setDiscardItem(item);
-                        setDiscardPercent(0);
-                        setDiscardModalVisible(true);
+                        openDiscardModal(item);
                       }}
                     >
                       <Text style={styles.webBtnText}>Bin</Text>

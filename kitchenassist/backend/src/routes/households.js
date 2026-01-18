@@ -551,6 +551,35 @@ router.get('/households/:householdId', async (req, res) => {
   return res.json(household);
 });
 
+router.get('/households/:householdId/members', async (req, res) => {
+  const { householdId } = req.params;
+  const db = req.app.locals.db;
+
+  if (!ObjectId.isValid(householdId)) {
+    return res.status(400).json({ error: 'Invalid household id.' });
+  }
+
+  try {
+    const members = await db
+      .collection('users')
+      .find({ householdId: new ObjectId(householdId) })
+      .project({ firstName: 1, lastName: 1, email: 1 })
+      .toArray();
+
+    const formatted = members.map((member) => ({
+      id: member._id,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      email: member.email,
+    }));
+
+    return res.json(formatted);
+  } catch (error) {
+    console.error('[GET /households/:householdId/members] Exception:', error);
+    return res.status(500).json({ error: 'Failed to fetch household members.' });
+  }
+});
+
 router.get('/households/:householdId/fridge-items', async (req, res) => {
   const { householdId } = req.params;
   const db = req.app.locals.db;

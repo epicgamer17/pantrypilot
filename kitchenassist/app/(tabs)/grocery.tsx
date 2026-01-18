@@ -39,7 +39,32 @@ export default function GroceryScreen() {
     return headers;
   };
 
-  // --- QUICK ADD LOGIC ---
+  const handleReadEmails = async () => {
+    try {
+      console.log("Fetching latest unread emails...");
+      // Using the API_URL already defined in your file (handles localhost/android emulator)
+      const response = await fetch(`${API_URL}/emails/latest-bodies`, {
+        method: 'GET',
+        headers: getAuthHeaders(), // Using existing helper for user/household context
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+
+      const emailData = await response.json();
+
+      // Print the results to the console as requested
+      console.log('--- Email Vision Data ---');
+      console.log(JSON.stringify(emailData, null, 2));
+
+      if (emailData.length === 0) {
+        console.log("No unread emails found.");
+      }
+    } catch (error) {
+      console.error('Failed to read emails:', error);
+    }
+  };
 
   // 1. Recently Used (Finished or Binned)
   const recentItems = useMemo(() => {
@@ -263,8 +288,27 @@ export default function GroceryScreen() {
               <MaterialCommunityIcons name="plus" size={24} color="white" />
             </TouchableOpacity>
           </View>
-
-          {/* QUICK ADD SECTION */}
+          <TouchableOpacity
+            style={[
+              styles.clearButton,
+              {
+                backgroundColor: Colors.light.infoBg,
+                alignSelf: 'flex-end', // Prevents stretching vertically
+                paddingHorizontal: 10,  // Narrower horizontal footprint
+                paddingVertical: 6,    // Shorter vertical footprint
+                marginRight: 8,        // Space between this and "Select all"
+                flex: 0,               // Ensures it doesn't grow to fill space
+              }
+            ]}
+            onPress={handleReadEmails}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialCommunityIcons name="email-sync" size={14} color={Colors.light.info} />
+              <Text style={[styles.clearButtonText, { color: Colors.light.info, fontSize: 11 }]}>
+                Read Email Receipt
+              </Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.quickAddContainer}>
             <Text style={Typography.label}>Quick Add</Text>
             <ScrollView

@@ -21,6 +21,6 @@ router.use(groceryStores);
 router.use(images);
 router.use(recipes); // Use the new route
 router.use(items);
-router.use(emailRoutes); // Use the email routes
+router.use('/emails', emailRoutes); // 2. Mount it at /emails
 
 module.exports = router;

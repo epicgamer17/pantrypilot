@@ -328,6 +328,42 @@ const userSchema = {
         recipeRecommendations: { bsonType: 'bool' },
       },
     },
+    mostExpensivePurchase: {
+      bsonType: 'object',
+      properties: {
+        itemId: { bsonType: 'objectId' },
+        name: { bsonType: 'string' },
+        category: { bsonType: 'string' },
+        pricePerUnit: { bsonType: numericBsonTypes },
+        totalPrice: { bsonType: numericBsonTypes },
+        purchasedAt: { bsonType: 'date' },
+      },
+    },
+    mostExpensivePurchasePerUnit: {
+      bsonType: 'object',
+      properties: {
+        itemId: { bsonType: 'objectId' },
+        name: { bsonType: 'string' },
+        category: { bsonType: 'string' },
+        pricePerUnit: { bsonType: numericBsonTypes },
+        purchasedAt: { bsonType: 'date' },
+      },
+    },
+    mostExpensivePurchaseLine: {
+      bsonType: 'object',
+      properties: {
+        itemId: { bsonType: 'objectId' },
+        name: { bsonType: 'string' },
+        category: { bsonType: 'string' },
+        pricePerUnit: { bsonType: numericBsonTypes },
+        totalPrice: { bsonType: numericBsonTypes },
+        purchasedAt: { bsonType: 'date' },
+      },
+    },
+    spendByCategory: {
+      bsonType: 'object',
+      additionalProperties: { bsonType: numericBsonTypes },
+    },
     createdAt: { bsonType: 'date' },
     updatedAt: { bsonType: 'date' },
   },

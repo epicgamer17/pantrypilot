@@ -3,6 +3,7 @@ import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensi
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card'; // Import the Card component
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
 import ItemNameAutocomplete from '../../components/ItemNameAutocomplete';
@@ -13,6 +14,7 @@ type SortMode = 'aisle' | 'recipe' | 'az';
 export default function GroceryScreen() {
   const { width } = useWindowDimensions();
   const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, setAllGroceryItemsChecked, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems, purchaseHistory, userId, householdId } = useApp();
+  const { userToken } = useAuth();
   const [sortMode, setSortMode] = useState<SortMode>('aisle');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -36,6 +38,7 @@ export default function GroceryScreen() {
     const headers: Record<string, string> = {};
     if (userId) headers['x-user-id'] = userId;
     if (householdId) headers['x-household-id'] = householdId;
+    if (userToken) headers['Authorization'] = `Bearer ${userToken}`;
     return headers;
   };
 

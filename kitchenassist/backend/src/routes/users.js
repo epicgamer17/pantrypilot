@@ -5,6 +5,41 @@ const { omitUndefined } = require('./utils');
 
 const router = express.Router();
 
+let auth0MgmtToken = null;
+let auth0MgmtTokenExpiry = 0;
+
+const getAuth0Domain = () => {
+  const raw = process.env.AUTH0_DOMAIN || '';
+  return raw.startsWith('http') ? raw : `https://${raw}`;
+};
+
+const getAuth0MgmtToken = async () => {
+  const domain = getAuth0Domain();
+  const clientId = process.env.AUTH0_M2M_CLIENT_ID;
+  const clientSecret = process.env.AUTH0_M2M_CLIENT_SECRET;
+  if (!domain || !clientId || !clientSecret) return null;
+
+  const now = Date.now();
+  if (auth0MgmtToken && now < auth0MgmtTokenExpiry) return auth0MgmtToken;
+
+  const response = await fetch(`${domain}/oauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret,
+      audience: `${domain}/api/v2/`,
+    }),
+  });
+
+  if (!response.ok) return null;
+  const data = await response.json();
+  auth0MgmtToken = data.access_token;
+  auth0MgmtTokenExpiry = now + ((data.expires_in || 3600) - 60) * 1000;
+  return auth0MgmtToken;
+};
+
 router.post('/users/auth0', async (req, res) => {
   const { auth0UserId, email, firstName, lastName, auth0 } = req.body ?? {};
 
@@ -174,6 +209,64 @@ router.post('/users/:userId/leave-household', async (req, res) => {
     console.error('[POST /users/:userId/leave-household] Exception:', err);
     return res.status(500).json({ error: 'Internal server error.' });
   }
+});
+
+router.post('/users/:userId/link-google', async (req, res) => {
+  const { userId } = req.params;
+  const { googleSub } = req.body ?? {};
+
+  if (!ObjectId.isValid(userId)) {
+    return res.status(400).json({ error: 'Invalid user id.' });
+  }
+  if (!googleSub || !String(googleSub).includes('|')) {
+    return res.status(400).json({ error: 'Missing googleSub.' });
+  }
+
+  const db = req.app.locals.db;
+  const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+  if (!user?.auth0UserId) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  const mgmtToken = await getAuth0MgmtToken();
+  if (!mgmtToken) {
+    return res.status(500).json({ error: 'Missing Auth0 management credentials.' });
+  }
+
+  const [provider, providerUserId] = String(googleSub).split('|');
+  if (!providerUserId) {
+    return res.status(400).json({ error: 'Invalid googleSub format.' });
+  }
+
+  const domain = getAuth0Domain();
+  const response = await fetch(
+    `${domain}/api/v2/users/${encodeURIComponent(user.auth0UserId)}/identities`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${mgmtToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        provider,
+        user_id: providerUserId,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    const errorCode = error?.errorCode;
+    if (response.status === 409 || errorCode === 'operation_not_supported') {
+      return res.json({ linked: true, alreadyLinked: true });
+    }
+    return res.status(400).json({
+      error: 'Failed to link Google account.',
+      details: error,
+    });
+  }
+
+  return res.json({ linked: true });
 });
 
 module.exports = router;

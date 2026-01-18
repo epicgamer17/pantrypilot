@@ -5,6 +5,7 @@ import re
 import shutil
 from pathlib import Path
 import os
+import base64
 
 BASE_URL = os.getenv("BASE_URL")
 USER_ID = os.getenv("USER_ID")
@@ -21,6 +22,7 @@ headers = {
     "Content-Type": "application/json",
     "Authorization": os.getenv("API_KEY")
 }
+
 
 payload = {
     "receipt_image": "https://media-cdn.tripadvisor.com/media/photo-s/17/9b/8e/b1/our-receipt.jpg"

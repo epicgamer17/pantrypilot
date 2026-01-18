@@ -133,10 +133,11 @@ export const createFridgeActions = ({
         const newItem = {
           ...itemToRemove,
           isUsed: true,
-          purchaseDate: new Date().toISOString(),
+          percentWasted: percentWasted,
+          purchaseDate: itemToRemove.purchaseDate || new Date().toISOString(),
         };
         const filtered = prev.filter((i) => i.name !== newItem.name);
-        return [newItem, ...filtered].slice(0, 20);
+        return [newItem, ...filtered].slice(0, 50);
       });
     }
     setFridgeItems((prev) => prev.filter((item) => item.id !== id));
@@ -155,7 +156,6 @@ export const createFridgeActions = ({
       refreshData();
     }
   };
-
   const consumeItem = async (id: string, amountConsumed: number) => {
     const item = fridgeItems.find((i) => i.id === id);
     if (!item) return;

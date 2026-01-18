@@ -144,4 +144,36 @@ router.patch('/users/:userId', async (req, res) => {
   }
 });
 
+router.post('/users/:userId/leave-household', async (req, res) => {
+  const { userId } = req.params;
+  const db = req.app.locals.db;
+
+  if (!ObjectId.isValid(userId)) {
+    return res.status(400).json({ error: 'Invalid user id.' });
+  }
+
+  try {
+    const now = new Date();
+    const result = await db.collection('users').findOneAndUpdate(
+      { _id: new ObjectId(userId) },
+      {
+        $unset: { householdId: '' },
+        $set: { updatedAt: now },
+      },
+      { returnDocument: 'after' }
+    );
+
+    const userDoc = (result && result.value) ? result.value : result;
+
+    if (!userDoc) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    return res.json(userDoc);
+  } catch (err) {
+    console.error('[POST /users/:userId/leave-household] Exception:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 module.exports = router;

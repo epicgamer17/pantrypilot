@@ -1,3 +1,3 @@
-import AccountScreen from '../account';
+import AccountScreen from '../../components/AccountScreen';
 
 export default AccountScreen;

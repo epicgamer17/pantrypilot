@@ -31,6 +31,10 @@ const buildItemNamePatterns = (rawQuery) => {
     return Array.from(patterns);
   }
 
+  const ensurePattern = (pattern) => {
+    if (pattern) patterns.add(pattern);
+  };
+
   const includesAny = (values) => values.some((value) => normalized.includes(value));
 
   if (includesAny(['bean', 'beans'])) {
@@ -56,6 +60,102 @@ const buildItemNamePatterns = (rawQuery) => {
     patterns.add(
       '\\b(apple|banana|avocado|berries?|grapes?|orange|lemon|lime|tomato|onion|garlic|lettuce|spinach|carrot|cucumber|pepper|broccoli|cauliflower|potato|mushroom|herb|cilantro|parsley|basil|kale|zucchini|celery)\\b'
     );
+  }
+
+  if (includesAny(['baby potato', 'baby potatoes', 'mini potato', 'mini potatoes'])) {
+    ensurePattern('\\b(baby|new|mini|small)\\s+potatoes?\\b');
+  }
+
+  if (includesAny(['cannelli', 'cannellini'])) {
+    ensurePattern('\\b(cannellini|canneli)\\b');
+  }
+
+  if (includesAny(['chickpea', 'chickpeas', 'garbanzo'])) {
+    ensurePattern('\\b(chickpeas?|garbanzo)\\b');
+    ensurePattern('\\b(canned|tinned)\\b.*\\b(chickpeas?|garbanzo)\\b');
+    ensurePattern('\\b\\d+\\s*oz\\b.*\\b(chickpeas?|garbanzo)\\b');
+  }
+
+  if (includesAny(['cashew', 'cashews'])) {
+    ensurePattern('\\bcashews?\\b');
+  }
+
+  if (includesAny(['chicken breast', 'skinless chicken breast', 'chicken breast skinless', 'chicken cutlet', 'chicken cutlets'])) {
+    ensurePattern('\\bchicken\\b.*\\b(breast(s)?|cutlet(s)?)\\b');
+    ensurePattern('\\b(chicken\\s+breast|chicken\\s+cutlet)\\b');
+  }
+
+  if (includesAny(['chicken stock', 'chicken broth'])) {
+    ensurePattern('\\b(chicken\\s+stock|chicken\\s+broth)\\b');
+  }
+
+  if (includesAny(['chicken thigh', 'chicken thighs'])) {
+    ensurePattern('\\bchicken\\b.*\\bthighs?\\b');
+    ensurePattern('\\bchicken\\s+thighs?\\b');
+  }
+
+  if (includesAny(['chile crisp', 'chili crisp'])) {
+    ensurePattern('\\b(chile|chili)\\s+crisp\\b');
+  }
+
+  if (includesAny(['cornstarch', 'corn starch'])) {
+    ensurePattern('\\b(corn\\s*starch|cornstarch)\\b');
+  }
+
+  if (includesAny(['dill', 'fresh dill'])) {
+    ensurePattern('\\b(dill|fresh\\s+dill)\\b');
+  }
+
+  if (includesAny(['parmesan', 'parmesean', 'grated parmesan', 'grated parmesean'])) {
+    ensurePattern('\\b(parmesan|parmesean|parmigiano)\\b');
+  }
+
+  if (includesAny(['heavy cream'])) {
+    ensurePattern('\\bheavy\\s+cream\\b');
+  }
+
+  if (includesAny(['jumbo shrimp', 'shrimp'])) {
+    ensurePattern('\\b(jumbo\\s+shrimp|shrimp)\\b');
+  }
+
+  if (includesAny(['kale'])) {
+    ensurePattern('\\bkale\\b');
+  }
+
+  if (includesAny(['lemon', 'lemons'])) {
+    ensurePattern('\\blemons?\\b');
+  }
+
+  if (includesAny(['lime', 'limes'])) {
+    ensurePattern('\\blimes?\\b');
+  }
+
+  if (includesAny(['yogurt', 'yoghurt'])) {
+    ensurePattern('\\b(yogurt|yoghurt)\\b');
+  }
+
+  if (includesAny(['roma pepper', 'roma peppers'])) {
+    ensurePattern('\\broma\\s+peppers?\\b');
+  }
+
+  if (includesAny(['sesame seed', 'sesame seeds'])) {
+    ensurePattern('\\bsesame\\s+seeds?\\b');
+  }
+
+  if (includesAny(['shredded cheddar', 'cheddar'])) {
+    ensurePattern('\\bcheddar\\b');
+  }
+
+  if (includesAny(['soy sauce'])) {
+    ensurePattern('\\bsoy\\s+sauce\\b');
+  }
+
+  if (includesAny(['miso paste', 'miso'])) {
+    ensurePattern('\\bmiso(\\s+paste)?\\b');
+  }
+
+  if (includesAny(['yellow onion', 'onion'])) {
+    ensurePattern('\\byellow\\s+onion(s)?\\b');
   }
 
   return Array.from(patterns);

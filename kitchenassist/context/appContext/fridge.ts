@@ -55,6 +55,7 @@ export const createFridgeActions = ({
         quantity: item.quantity,
         unit: item.unit,
         location: item.location ?? 'fridge',
+        purchasePrice: item.purchasePrice ?? undefined,
         purchaseDate: item.purchaseDate || new Date().toISOString(),
         expirationDate: item.expiryDate,
         notes: 'Added via App',

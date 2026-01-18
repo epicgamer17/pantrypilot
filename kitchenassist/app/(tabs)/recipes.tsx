@@ -78,6 +78,7 @@ export default function RecipesScreen() {
     const [isPublicRecipe, setIsPublicRecipe] = useState(false);
     const [isAiRecipe, setIsAiRecipe] = useState(false);
     const [newInstructionsText, setNewInstructionsText] = useState('');
+    const [newRecipeServings, setNewRecipeServings] = useState('');
     const [instructionsExpanded, setInstructionsExpanded] = useState(false);
     const [leftColumnHeight, setLeftColumnHeight] = useState(0);
 
@@ -457,6 +458,11 @@ export default function RecipesScreen() {
             setNewRecipeName(recipe.name);
             setNewIngredients(resolvedIngredients);
             setNewInstructionsText(instructionsText);
+            setNewRecipeServings(
+                Number.isFinite(Number(recipe.servings))
+                    ? String(recipe.servings)
+                    : '',
+            );
             setIsPublicRecipe(true);
             setIsAiRecipe(true);
             setModalVisible(true);
@@ -526,6 +532,11 @@ export default function RecipesScreen() {
         setNewIngredients(recipe.ingredients.map(i => ({ ...i })));
         setIsPublicRecipe(!!recipe.isPublic);
         setIsAiRecipe(!!recipe.isAiGenerated);
+        setNewRecipeServings(
+            Number.isFinite(Number(recipe.servings))
+                ? String(recipe.servings)
+                : '',
+        );
         setNewInstructionsText(buildInstructionText(recipe.instructions));
         setModalVisible(true);
     };
@@ -553,6 +564,7 @@ export default function RecipesScreen() {
         setNewIngredients([]);
         setIsPublicRecipe(false);
         setIsAiRecipe(false);
+        setNewRecipeServings('');
         setNewInstructionsText('');
         setModalVisible(true);
     };
@@ -595,6 +607,7 @@ export default function RecipesScreen() {
     const saveRecipe = () => {
         if (!newRecipeName || newIngredients.length === 0) return;
 
+        const parsedServings = Number(newRecipeServings);
         const recipeData = {
             id: editingRecipeId || Math.random().toString(),
             name: newRecipeName,
@@ -602,6 +615,7 @@ export default function RecipesScreen() {
             instructions: parseInstructions(newInstructionsText),
             isPublic: isPublicRecipe,
             isAiGenerated: isAiRecipe,
+            servings: Number.isFinite(parsedServings) ? parsedServings : undefined,
         };
 
         if (editingRecipeId) {
@@ -615,6 +629,7 @@ export default function RecipesScreen() {
         setNewIngredients([]);
         setIsPublicRecipe(false);
         setIsAiRecipe(false);
+        setNewRecipeServings('');
         setNewInstructionsText('');
         setEditingRecipeId(null);
         setModalVisible(false);
@@ -844,6 +859,15 @@ export default function RecipesScreen() {
                     <Text style={Typography.header}>{editingRecipeId ? 'Edit Recipe' : 'New Recipe'}</Text>
                     <Text style={Typography.label}>Recipe Name</Text>
                     <TextInput style={styles.input} placeholder="e.g. Stew" value={newRecipeName} onChangeText={setNewRecipeName} />
+
+                    <Text style={Typography.label}>Servings</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="e.g. 4"
+                        value={newRecipeServings}
+                        onChangeText={setNewRecipeServings}
+                        keyboardType="numeric"
+                    />
 
                     <View style={styles.switchRow}>
                         <Text style={styles.switchLabel}>Make Public (Visible to everyone)</Text>

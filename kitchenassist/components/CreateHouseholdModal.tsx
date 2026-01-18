@@ -170,6 +170,16 @@ export default function CreateHouseholdModal({
       if (!data.householdId) {
         throw new Error('Missing household id.');
       }
+      const householdInfo: HouseholdInfo = {
+        id: String(data.householdId),
+        name: name.trim(),
+        inviteCode: data.inviteCode ?? undefined,
+        location: payload.location as HouseholdInfo['location'] | undefined,
+      };
+      setHouseholdId(householdInfo.id);
+      setHouseholdInfo(householdInfo);
+      setHasHousehold(true);
+      onCreated(householdInfo);
       handleClose();
     } catch (err) {
       setError(

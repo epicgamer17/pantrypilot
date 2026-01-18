@@ -1256,6 +1256,20 @@ async function seed() {
   const now = new Date();
   const omitUndefined = (value) =>
     Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+  const normalizeUnit = (unit) => {
+    if (typeof unit !== 'string') {
+      return { defaultUnit: unit };
+    }
+    const trimmed = unit.trim();
+    const match = trimmed.match(/^(\d+(?:\.\d+)?)([a-zA-Z]+)(?:\s+(.*))?$/);
+    if (!match) {
+      return { defaultUnit: trimmed };
+    }
+    const packageQuantity = Number(match[1]);
+    const packageUnit = match[2];
+    const defaultUnit = match[3] ? match[3].trim() : packageUnit;
+    return { defaultUnit, packageQuantity, packageUnit };
+  };
 
   // Stores
   const storeDocs = STORES.map((store) => ({
@@ -1296,7 +1310,7 @@ async function seed() {
     category: template.cat,
     subcategory: template.sub,
     averageShelfLife: template.shelf,
-    defaultUnit: template.unit,
+    ...normalizeUnit(template.unit),
     tags: ['seeded'],
     createdAt: now,
     updatedAt: now,
@@ -1317,7 +1331,7 @@ async function seed() {
         category: template.cat,
         subcategory: template.sub,
         averageShelfLife: template.shelf,
-        defaultUnit: template.unit,
+        ...normalizeUnit(template.unit),
         tags: ['seeded'],
         createdAt: now,
         updatedAt: now,
@@ -1447,8 +1461,8 @@ async function seed() {
     const shuffled = [...itemIds].sort(() => 0.5 - Math.random()).slice(0, 60);
     shuffled.forEach((itemId, index) => {
       const template = ITEM_TEMPLATES[index % ITEM_TEMPLATES.length];
-      const priceVariation = 0.9 + Math.random() * 0.2;
-      const storePrice = Number((template.price * priceVariation).toFixed(2));
+      const priceVariation = (Math.random() * 0.4) - 0.2;
+      const storePrice = Number(Math.max(template.price + priceVariation, 0.01).toFixed(2));
       const key = `${storeId.toString()}-${itemId.toString()}`;
       inventoryKeys.add(key);
 
@@ -1480,8 +1494,8 @@ async function seed() {
       if (inventoryKeys.has(key)) return;
       inventoryKeys.add(key);
 
-      const priceVariation = 0.9 + Math.random() * 0.2;
-      const storePrice = Number((template.price * priceVariation).toFixed(2));
+      const priceVariation = (Math.random() * 0.4) - 0.2;
+      const storePrice = Number(Math.max(template.price + priceVariation, 0.01).toFixed(2));
       inventoryDocs.push({
         storeId,
         itemId,

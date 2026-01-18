@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useApp } from '../../context/AppContext';
 import { Card } from '../../components/ui/Card'; // Import Card
@@ -62,6 +62,14 @@ export default function AnalyticsScreen() {
   const milkHistory = purchaseHistory
     .filter(i => i.name === 'Milk')
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const purchaseEntries = [...purchaseHistory]
+    .filter((entry) => entry.name && entry.category !== 'Total')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const [purchasePage, setPurchasePage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(purchaseEntries.length / pageSize));
+  const pagedPurchases = purchaseEntries.slice(0, purchasePage * pageSize);
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={{ alignItems: 'center' }}>
@@ -186,6 +194,68 @@ export default function AnalyticsScreen() {
           </View>
         )}
 
+        {/* --- PURCHASE HISTORY --- */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Purchase History 🧾</Text>
+          <Text style={Typography.caption}>Most recent items you've bought</Text>
+
+          {pagedPurchases.length ? (
+            <Card variant="elevated" style={styles.historyCardOverride}>
+              <ScrollView style={styles.historyList}>
+                {pagedPurchases.map((entry) => {
+                  const total = (entry.price || 0) * (entry.quantity || 1);
+                  const dateLabel = new Date(entry.date).toLocaleDateString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                  });
+                  return (
+                    <View key={entry.id} style={styles.historyRow}>
+                      <View style={styles.historyMeta}>
+                        <Text style={styles.cardTitle}>{entry.name}</Text>
+                        <Text style={Typography.caption}>
+                          {dateLabel} · {entry.store || 'Store'} · {entry.quantity} {entry.unit}
+                        </Text>
+                      </View>
+                      <Text style={styles.historyPrice}>${total.toFixed(2)}</Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+              {purchaseEntries.length > pageSize && (
+                <View style={styles.paginationRow}>
+                  <Text style={styles.paginationText}>
+                    Page {purchasePage} of {totalPages}
+                  </Text>
+                  <View style={styles.paginationButtons}>
+                    <TouchableOpacity
+                      style={[
+                        styles.paginationButton,
+                        purchasePage === 1 && styles.paginationButtonDisabled,
+                      ]}
+                      onPress={() => setPurchasePage(Math.max(1, purchasePage - 1))}
+                      disabled={purchasePage === 1}
+                    >
+                      <Text style={styles.paginationButtonText}>Previous</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.paginationButton,
+                        purchasePage >= totalPages && styles.paginationButtonDisabled,
+                      ]}
+                      onPress={() => setPurchasePage(Math.min(totalPages, purchasePage + 1))}
+                      disabled={purchasePage >= totalPages}
+                    >
+                      <Text style={styles.paginationButtonText}>Next</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </Card>
+          ) : (
+            <Text style={styles.historyEmpty}>No purchases recorded yet.</Text>
+          )}
+        </View>
+
         {/* --- WASTE ANALYSIS --- */}
         <View style={[styles.section, { marginBottom: 40 }]}>
           <Text style={styles.sectionTitle}>Waste Analysis 🗑️</Text>
@@ -254,6 +324,60 @@ const styles = StyleSheet.create({
 
   tableRow: { flexDirection: 'row', paddingVertical: Spacing.m, borderBottomWidth: 1, borderBottomColor: Colors.light.background },
   tableCell: { flex: 1, textAlign: 'center', fontSize: 15, color: Colors.light.text },
+
+  historyCardOverride: {
+    padding: Spacing.s,
+    height: 360,
+  },
+  historyList: {
+    flexGrow: 0,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.m,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.background,
+  },
+  historyMeta: {
+    flex: 1,
+    paddingRight: Spacing.m,
+  },
+  historyPrice: {
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  paginationRow: {
+    paddingTop: Spacing.s,
+    gap: Spacing.s,
+  },
+  paginationText: {
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+  },
+  paginationButtons: {
+    flexDirection: 'row',
+    gap: Spacing.s,
+    justifyContent: 'center',
+  },
+  paginationButton: {
+    backgroundColor: Colors.light.secondary,
+    paddingVertical: Spacing.s,
+    paddingHorizontal: Spacing.m,
+    borderRadius: BorderRadius.m,
+  },
+  paginationButtonDisabled: {
+    opacity: 0.5,
+  },
+  paginationButtonText: {
+    color: Colors.light.text,
+    fontWeight: '600',
+  },
+  historyEmpty: {
+    color: Colors.light.textSecondary,
+    marginTop: Spacing.s,
+  },
 
   wasteMoney: { fontSize: 40, fontWeight: 'bold', color: Colors.light.danger },
   wasteLabel: { color: '#b71c1c', fontWeight: '600', marginTop: 5 }

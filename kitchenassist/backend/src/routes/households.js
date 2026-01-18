@@ -965,6 +965,136 @@ router.post('/households/:householdId/purchases', async (req, res) => {
   }
 
   await db.collection('purchaseHistory').insertMany(docs);
+  const userIdSet = new Set();
+  const itemIdSet = new Set();
+  docs.forEach((doc) => {
+    if (doc.userId) userIdSet.add(String(doc.userId));
+    if (doc.itemId) itemIdSet.add(String(doc.itemId));
+  });
+
+  const normalizeCategoryKey = (value) =>
+    String(value || 'Other').replace(/[.$]/g, '_');
+
+  if (userIdSet.size && itemIdSet.size) {
+    const itemIds = Array.from(itemIdSet).map((id) => new ObjectId(id));
+    const items = await db
+      .collection('items')
+      .find({ _id: { $in: itemIds } })
+      .project({ name: 1, category: 1 })
+      .toArray();
+    const itemMap = new Map(
+      items.map((item) => [String(item._id), item]),
+    );
+
+    const userIds = Array.from(userIdSet).map((id) => new ObjectId(id));
+    const users = await db
+      .collection('users')
+      .find({ _id: { $in: userIds } })
+      .project({
+        spendByCategory: 1,
+        mostExpensivePurchasePerUnit: 1,
+        mostExpensivePurchaseLine: 1,
+      })
+      .toArray();
+    const userMap = new Map(users.map((user) => [String(user._id), user]));
+
+    const aggregates = new Map();
+    docs.forEach((doc) => {
+      if (!doc.userId) return;
+      const userId = String(doc.userId);
+      const itemInfo = itemMap.get(String(doc.itemId));
+      const category = normalizeCategoryKey(itemInfo?.category);
+      const name = itemInfo?.name || 'Item';
+      const quantity = Number(doc.quantity ?? 0);
+      const pricePerUnit = Number(doc.pricePerUnit ?? 0);
+      const totalPrice = Number.isFinite(doc.totalPrice)
+        ? Number(doc.totalPrice)
+        : quantity * pricePerUnit;
+      if (!Number.isFinite(totalPrice)) return;
+
+      const entry = aggregates.get(userId) || {
+        spendByCategory: {},
+        mostExpensivePerUnit: null,
+        mostExpensiveLine: null,
+      };
+      entry.spendByCategory[category] =
+        (entry.spendByCategory[category] || 0) + totalPrice;
+
+      const candidate = {
+        itemId: doc.itemId,
+        name,
+        category: itemInfo?.category || 'Other',
+        pricePerUnit,
+        totalPrice,
+        purchasedAt: doc.purchasedAt,
+      };
+      if (!entry.mostExpensiveLine || totalPrice > entry.mostExpensiveLine.totalPrice) {
+        entry.mostExpensiveLine = candidate;
+      }
+      if (!entry.mostExpensivePerUnit || pricePerUnit > entry.mostExpensivePerUnit.pricePerUnit) {
+        entry.mostExpensivePerUnit = {
+          itemId: doc.itemId,
+          name,
+          category: itemInfo?.category || 'Other',
+          pricePerUnit,
+          purchasedAt: doc.purchasedAt,
+        };
+      }
+      aggregates.set(userId, entry);
+    });
+
+    const updates = [];
+    aggregates.forEach((entry, userId) => {
+      const user = userMap.get(userId);
+      if (!user) return;
+      const nextSpend = { ...(user.spendByCategory ?? {}) };
+      Object.entries(entry.spendByCategory).forEach(([category, amount]) => {
+        nextSpend[category] = (nextSpend[category] || 0) + amount;
+      });
+
+      const existingPerUnit = user.mostExpensivePurchasePerUnit;
+      const nextPerUnit =
+        entry.mostExpensivePerUnit &&
+          (!existingPerUnit ||
+            entry.mostExpensivePerUnit.pricePerUnit >
+              Number(existingPerUnit.pricePerUnit ?? 0))
+          ? entry.mostExpensivePerUnit
+          : existingPerUnit;
+
+      const existingLine = user.mostExpensivePurchaseLine;
+      const nextLine =
+        entry.mostExpensiveLine &&
+          (!existingLine ||
+            entry.mostExpensiveLine.totalPrice >
+              Number(existingLine.totalPrice ?? 0))
+          ? entry.mostExpensiveLine
+          : existingLine;
+
+      const update = {
+        $set: {
+          spendByCategory: nextSpend,
+          updatedAt: now,
+        },
+      };
+      if (nextPerUnit) {
+        update.$set.mostExpensivePurchasePerUnit = nextPerUnit;
+      }
+      if (nextLine) {
+        update.$set.mostExpensivePurchaseLine = nextLine;
+      }
+
+      updates.push({
+        updateOne: {
+          filter: { _id: new ObjectId(userId) },
+          update,
+        },
+      });
+    });
+
+    if (updates.length) {
+      await db.collection('users').bulkWrite(updates);
+    }
+  }
   return res.status(201).json({ recorded: docs.length });
 });
 

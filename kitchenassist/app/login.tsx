@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
@@ -16,6 +16,7 @@ export default function LoginScreen() {
     const { setUserId, setHouseholdId } = useApp();
     const [authError, setAuthError] = useState<string | null>(null);
     const [isSigningIn, setIsSigningIn] = useState(false);
+    const [gmailOptIn, setGmailOptIn] = useState(false);
 
     const discovery = AuthSession.useAutoDiscovery(`https://${AUTH0_DOMAIN}`);
     const redirectUri = AuthSession.makeRedirectUri({ scheme: 'kitchenassist' });
@@ -26,6 +27,12 @@ export default function LoginScreen() {
             redirectUri,
             scopes: ['openid', 'profile', 'email'],
             responseType: AuthSession.ResponseType.Token,
+            extraParams: gmailOptIn
+                ? {
+                    connection_scope: 'https://www.googleapis.com/auth/gmail.readonly',
+                    prompt: 'consent',
+                }
+                : undefined,
         },
         discovery,
     );
@@ -80,6 +87,7 @@ export default function LoginScreen() {
                         auth0: {
                             provider: profile.sub?.split('|')[0],
                             emailVerified: profile.email_verified,
+                            gmailReadOnlyEnabled: gmailOptIn,
                         },
                     }),
                     signal: controller.signal,
@@ -135,6 +143,20 @@ export default function LoginScreen() {
                         Sign in to manage your fridge, grocery lists, and recipes.
                     </Text>
 
+                    <View style={styles.gmailToggleRow}>
+                        <View style={styles.gmailToggleText}>
+                            <Text style={Typography.body}>Enable Gmail read-only</Text>
+                            <Text style={styles.gmailToggleHint}>
+                                Optional. Lets us read your Gmail metadata when you opt in.
+                            </Text>
+                        </View>
+                        <Switch
+                            value={gmailOptIn}
+                            onValueChange={setGmailOptIn}
+                            disabled={isSigningIn}
+                        />
+                    </View>
+
                     <TouchableOpacity
                         style={[styles.authButton, isSigningIn && styles.authButtonDisabled]}
                         disabled={!request || isSigningIn}
@@ -174,6 +196,20 @@ const styles = StyleSheet.create({
         padding: Spacing.l,
         gap: Spacing.m,
         ...Shadows.default,
+    },
+    gmailToggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: Spacing.m,
+    },
+    gmailToggleText: {
+        flex: 1,
+    },
+    gmailToggleHint: {
+        color: Colors.light.textSecondary,
+        marginTop: Spacing.xs,
+        fontSize: 12,
     },
     authButton: {
         backgroundColor: Colors.light.tint,

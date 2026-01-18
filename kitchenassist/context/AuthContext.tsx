@@ -45,7 +45,7 @@ function useProtectedRoute(
 
         const path = '/' + segments.join('/');
         const isLogin = path.startsWith('/login');
-        const isOnboarding = path.startsWith('/onboarding');
+        const isAccount = path.startsWith('/account');
 
         // 🚫 NOT LOGGED IN → force login
         if (!userToken) {
@@ -53,16 +53,16 @@ function useProtectedRoute(
             return;
         }
 
-        // 🚫 LOGGED IN BUT NOT SET UP → onboarding only
+        // 🚫 LOGGED IN BUT NOT SET UP → account only
         if (userToken && !hasHousehold) {
-            console.log('Routing to onboarding as no household is set up');
-            if (!isOnboarding) router.replace('/onboarding');
+            console.log('Routing to account as no household is set up');
+            if (!isAccount) router.replace('/account');
             return;
         }
 
-        // ✅ LOGGED IN + SET UP → Ensure we are NOT on login/onboarding
+        // ✅ LOGGED IN + SET UP → Ensure we are NOT on login
         if (userToken && hasHousehold) {
-            if (isLogin || isOnboarding) {
+            if (isLogin) {
                 router.replace('/fridge');
             }
         }

@@ -15,6 +15,7 @@ export default function RootLayout() {
           {/* Login Screen (Outside of tabs) */}
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="add" options={{ headerShown: false }} />
+          <Stack.Screen name="account" options={{ headerShown: false }} />
         </Stack>
       </AppProvider>
     </AuthProvider>

@@ -69,6 +69,16 @@ export default function TabLayout() {
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="account"
+        options={{
+          title: 'Account',
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons name={focused ? "account-circle" : "account-circle-outline"} size={28} color={color} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

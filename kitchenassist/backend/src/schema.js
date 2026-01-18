@@ -302,6 +302,7 @@ const userSchema = {
         provider: { bsonType: 'string' },
         emailVerified: { bsonType: 'bool' },
         lastLogin: { bsonType: 'date' },
+        gmailReadOnlyEnabled: { bsonType: 'bool' },
       },
     },
     firstName: { bsonType: 'string' },

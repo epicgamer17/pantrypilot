@@ -99,6 +99,49 @@ export const Typography = {
   } as TextStyle,
 };
 
+// 6. LAYOUT HELPERS
+export const Layout = {
+  pageMaxWidth: 1100,
+  contentMaxWidth: 520,
+  cardPadding: Spacing.xl,
+  sectionGap: Spacing.l,
+};
+
+// 7. FORMS
+export const Forms = {
+  field: {
+    backgroundColor: Palette.white,
+    borderRadius: BorderRadius.m,
+    borderWidth: 1,
+    borderColor: Palette.gray300,
+    paddingVertical: Spacing.m,
+    paddingHorizontal: Spacing.m,
+  } as ViewStyle,
+  fieldText: {
+    fontSize: 16,
+    color: Palette.gray900,
+  } as TextStyle,
+};
+
+// 8. BUTTONS
+export const Buttons = {
+  primary: {
+    backgroundColor: Palette.primary,
+    borderRadius: BorderRadius.m,
+    paddingVertical: Spacing.m,
+    paddingHorizontal: Spacing.l,
+    alignItems: 'center',
+  } as ViewStyle,
+  primaryText: {
+    color: Palette.white,
+    fontWeight: '700',
+    fontSize: 16,
+  } as TextStyle,
+  primaryDisabled: {
+    backgroundColor: Palette.gray300,
+  } as ViewStyle,
+};
+
 // 6. SEMANTIC COLORS
 export const Colors = {
   light: {

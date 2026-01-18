@@ -8,7 +8,8 @@ import { useApp } from '../../context/AppContext';
 import { Item } from '../../types';
 import EditItemModal from '../../components/EditItemModal';
 import { Card } from '../../components/ui/Card';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
+import { SurfaceCard } from '../../components/ui/SurfaceCard';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, Layout, Forms } from '../../constants/theme';
 
 export default function FridgeScreen() {
   const router = useRouter();
@@ -30,10 +31,14 @@ export default function FridgeScreen() {
   const isWeb = Platform.OS === 'web';
 
   // --- GRID CALCULATION ---
-  const numColumns = width > 1024 ? 3 : width > 700 ? 2 : 1;
+  const shellWidth = Math.min(width - Spacing.xl * 2, Layout.pageMaxWidth);
+  const isWide = width >= 1024;
+  const sidePanelWidth = isWide ? 320 : shellWidth;
+  const listWidth = isWide ? shellWidth - sidePanelWidth - Spacing.xl : shellWidth;
+  const listPadding = Spacing.s;
+  const numColumns = listWidth > 1024 ? 3 : listWidth > 700 ? 2 : 1;
   const gap = Spacing.m;
-  const screenPadding = Spacing.l * 2;
-  const availableWidth = width - screenPadding - ((numColumns - 1) * gap);
+  const availableWidth = listWidth - ((numColumns - 1) * gap) - (listPadding * 2);
   const cardWidth = availableWidth / numColumns;
 
   const openDiscardModal = (item: Item) => {
@@ -188,115 +193,129 @@ export default function FridgeScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
-        <View style={styles.headerRow}>
-          <Text style={Typography.header}>My Fridge</Text>
-          <TouchableOpacity onPress={() => router.push('/add')} style={styles.addButton}>
-            <MaterialCommunityIcons name="plus" size={24} color="white" />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.searchContainer}>
-          <MaterialCommunityIcons name="magnify" size={20} color={Colors.light.textMuted} style={{ marginRight: 8 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search items..."
-            placeholderTextColor={Colors.light.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-
-        <View style={styles.sortContainer}>
-          <TouchableOpacity
-            style={[styles.sortBtn, sortMode === 'expiry' && styles.sortBtnActive]}
-            onPress={() => setSortMode('expiry')}
-          >
-            <Text style={[styles.sortBtnText, sortMode === 'expiry' && styles.sortBtnTextActive]}>By Expiry</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
-            onPress={() => setSortMode('az')}
-          >
-            <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.sortBtn, sortMode === 'category' && styles.sortBtnActive]}
-            onPress={() => setSortMode('category')}
-          >
-            <Text style={[styles.sortBtnText, sortMode === 'category' && styles.sortBtnTextActive]}>Category</Text>
-          </TouchableOpacity>
-        </View>
-
-        <FlatList
-          key={numColumns}
-          numColumns={numColumns}
-          data={filteredItems}
-          keyExtractor={i => i.id}
-          contentContainerStyle={{ paddingBottom: 100 }}
-          columnWrapperStyle={numColumns > 1 ? { gap: Spacing.m } : undefined}
-          ListEmptyComponent={
-            fridgeLoading ? (
-              <View style={styles.loadingState}>
-                <ActivityIndicator size="large" color={Colors.light.primary} />
-                <Text style={styles.loadingText}>Loading fridge items...</Text>
+        <View style={[styles.shell, { width: shellWidth }, isWide && styles.shellWide]}>
+          <View style={[styles.sidePanel, { width: sidePanelWidth }]}>
+            <SurfaceCard style={styles.headerCard} variant="soft">
+              <View style={styles.headerRow}>
+                <View style={styles.headerText}>
+                  <Text style={styles.pageTitle}>My Fridge</Text>
+                  <Text style={styles.pageSubtitle}>Track what you have and keep spoilage low.</Text>
+                </View>
+                <TouchableOpacity onPress={() => router.push('/add')} style={styles.addButton}>
+                  <MaterialCommunityIcons name="plus" size={24} color="white" />
+                </TouchableOpacity>
               </View>
-            ) : (
-              <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="fridge-outline" size={64} color={Colors.light.border} />
-                <Text style={styles.emptyText}>Fridge is empty!</Text>
-              </View>
-            )
-          }
-          renderItem={({ item }) => {
-            let swipeableRef: Swipeable | null = null;
-            const close = () => swipeableRef?.close();
+            </SurfaceCard>
 
-            const CardBody = (
-              <Card
-                variant="elevated"
-                onLongPress={() => setEditItem(item)}
-                style={[
-                  styles.cardLayoutOverrides,
-                  { width: numColumns > 1 ? cardWidth : '100%' }
-                ]}
-              >
-                {renderCardContent(item)}
-                {isWeb && (
-                  <View style={styles.webActions}>
-                    <TouchableOpacity style={[styles.webBtn, styles.btnFinish]} onPress={() => removeFromFridge(item.id, 0)}>
-                      <Text style={styles.webBtnText}>Finish</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.webBtn, styles.btnTrash]}
-                      onPress={() => {
-                        openDiscardModal(item);
-                      }}
-                    >
-                      <Text style={styles.webBtnText}>Bin</Text>
-                    </TouchableOpacity>
+            <SurfaceCard style={styles.filterCard}>
+              <View style={styles.searchContainer}>
+                <MaterialCommunityIcons name="magnify" size={20} color={Colors.light.textMuted} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search items..."
+                  placeholderTextColor={Colors.light.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+
+              <View style={styles.sortContainer}>
+                <TouchableOpacity
+                  style={[styles.sortBtn, sortMode === 'expiry' && styles.sortBtnActive]}
+                  onPress={() => setSortMode('expiry')}
+                >
+                  <Text style={[styles.sortBtnText, sortMode === 'expiry' && styles.sortBtnTextActive]}>By Expiry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
+                  onPress={() => setSortMode('az')}
+                >
+                  <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sortBtn, sortMode === 'category' && styles.sortBtnActive]}
+                  onPress={() => setSortMode('category')}
+                >
+                  <Text style={[styles.sortBtnText, sortMode === 'category' && styles.sortBtnTextActive]}>Category</Text>
+                </TouchableOpacity>
+              </View>
+            </SurfaceCard>
+          </View>
+
+          <View style={[styles.listPanel, { width: listWidth }]}>
+            <FlatList
+              key={numColumns}
+              numColumns={numColumns}
+              data={filteredItems}
+              keyExtractor={i => i.id}
+              style={styles.list}
+              contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: listPadding }}
+              columnWrapperStyle={numColumns > 1 ? { gap: Spacing.m } : undefined}
+              ListEmptyComponent={
+                fridgeLoading ? (
+                  <View style={styles.loadingState}>
+                    <ActivityIndicator size="large" color={Colors.light.primary} />
+                    <Text style={styles.loadingText}>Loading fridge items...</Text>
                   </View>
-                )}
-              </Card>
-            );
+                ) : (
+                  <View style={styles.emptyState}>
+                    <MaterialCommunityIcons name="fridge-outline" size={64} color={Colors.light.border} />
+                    <Text style={styles.emptyText}>Fridge is empty!</Text>
+                  </View>
+                )
+              }
+              renderItem={({ item }) => {
+                let swipeableRef: Swipeable | null = null;
+                const close = () => swipeableRef?.close();
 
-            if (isWeb) return (
-              <View style={{ width: numColumns > 1 ? cardWidth : '100%', marginBottom: Spacing.m }}>
-                {CardBody}
-              </View>
-            );
+                const CardBody = (
+                  <Card
+                    variant="elevated"
+                    onLongPress={() => setEditItem(item)}
+                    style={[
+                      styles.cardLayoutOverrides,
+                      { width: numColumns > 1 ? cardWidth : '100%' }
+                    ]}
+                  >
+                    {renderCardContent(item)}
+                    {isWeb && (
+                      <View style={styles.webActions}>
+                        <TouchableOpacity style={[styles.webBtn, styles.btnFinish]} onPress={() => removeFromFridge(item.id, 0)}>
+                          <Text style={styles.webBtnText}>Finish</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.webBtn, styles.btnTrash]}
+                          onPress={() => {
+                            openDiscardModal(item);
+                          }}
+                        >
+                          <Text style={styles.webBtnText}>Bin</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </Card>
+                );
 
-            return (
-              <Swipeable
-                ref={ref => swipeableRef = ref}
-                renderRightActions={() => renderRightActions(item, close)}
-                renderLeftActions={() => renderLeftActions(item, close)}
-                containerStyle={{ width: numColumns > 1 ? cardWidth : '100%', marginBottom: Spacing.m }}
-              >
-                {CardBody}
-              </Swipeable>
-            );
-          }}
-        />
+                if (isWeb) return (
+                  <View style={{ width: numColumns > 1 ? cardWidth : '100%', marginBottom: Spacing.m }}>
+                    {CardBody}
+                  </View>
+                );
+
+                return (
+                  <Swipeable
+                    ref={ref => swipeableRef = ref}
+                    renderRightActions={() => renderRightActions(item, close)}
+                    renderLeftActions={() => renderLeftActions(item, close)}
+                    containerStyle={{ width: numColumns > 1 ? cardWidth : '100%', marginBottom: Spacing.m }}
+                  >
+                    {CardBody}
+                  </Swipeable>
+                );
+              }}
+            />
+          </View>
+        </View>
 
         <Modal visible={consumeModalVisible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
@@ -358,25 +377,62 @@ export default function FridgeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.l, paddingTop: 60, backgroundColor: Colors.light.background },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.l },
+  container: { flex: 1, backgroundColor: Colors.light.background, paddingVertical: Spacing.xxl, height: '100%' },
+  shell: {
+    alignSelf: 'center',
+    gap: Spacing.xl,
+    flex: 1,
+    width: '100%',
+  },
+  shellWide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xl,
+  },
+  sidePanel: {
+    gap: Spacing.l,
+  },
+  listPanel: {
+    flex: 1,
+    minHeight: 0,
+    height: '100%',
+  },
+  list: {
+    flex: 1,
+    minHeight: 0,
+  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.l },
+  headerText: { flex: 1, gap: Spacing.xs },
+  pageTitle: { fontSize: 26, fontWeight: '800', color: Colors.light.text },
+  pageSubtitle: { ...Typography.body, color: Colors.light.textSecondary },
   addButton: { width: 44, height: 44, borderRadius: BorderRadius.circle, backgroundColor: Colors.light.primary, justifyContent: 'center', alignItems: 'center', ...Shadows.default },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.background, paddingVertical: 10, paddingHorizontal: 12, borderRadius: BorderRadius.m, marginBottom: Spacing.l, borderWidth: 1, borderColor: Colors.light.border },
-  searchInput: { flex: 1, fontSize: 16, color: Colors.light.text },
-  sortContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.m, padding: 4, marginBottom: Spacing.m },
+  headerCard: {
+    padding: Layout.cardPadding,
+  },
+  filterCard: {
+    padding: Spacing.l,
+    gap: Spacing.l,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Forms.field,
+  },
+  searchInput: { flex: 1, ...Forms.fieldText },
+  sortContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.m, padding: 4 },
   sortBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: BorderRadius.s },
   sortBtnActive: { backgroundColor: Colors.light.card, ...Shadows.soft },
   sortBtnText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 13 },
   sortBtnTextActive: { color: Colors.light.text },
   cardLayoutOverrides: {
-    padding: Spacing.m,
-    minHeight: 160,
+    padding: Spacing.l,
+    minHeight: 170,
     justifyContent: 'space-between',
   },
   cardContent: { flex: 1 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.s },
   cardBody: { flex: 1, justifyContent: 'flex-end' },
-  iconContainer: { width: 40, height: 40, borderRadius: BorderRadius.m, backgroundColor: Colors.light.background, justifyContent: 'center', alignItems: 'center' },
+  iconContainer: { width: 40, height: 40, borderRadius: BorderRadius.m, backgroundColor: Colors.light.primaryBg, justifyContent: 'center', alignItems: 'center' },
   categoryEmoji: { fontSize: 20 },
   categoryText: { ...Typography.caption, color: Colors.light.textSecondary, marginBottom: Spacing.xs },
   itemName: { fontSize: 16, fontWeight: '600', color: Colors.light.text, marginBottom: Spacing.xs },
@@ -385,7 +441,7 @@ const styles = StyleSheet.create({
   qtyContainer: { marginTop: 4 },
   qtySlider: { width: '100%', height: 20, marginTop: 4 },
   daysText: { fontSize: 12, fontWeight: '700', marginBottom: 4, textAlign: 'right' },
-  progressBarBg: { width: 60, height: 4, backgroundColor: Colors.light.background, borderRadius: 2, overflow: 'hidden' },
+  progressBarBg: { width: 64, height: 4, backgroundColor: Colors.light.background, borderRadius: 2, overflow: 'hidden' },
   progressBarFill: { height: '100%', borderRadius: 2 },
   deleteAction: { backgroundColor: Colors.light.danger, justifyContent: 'center', alignItems: 'center', width: 80, height: '100%', borderRadius: BorderRadius.l, marginLeft: Spacing.s },
   finishAction: { backgroundColor: Colors.light.success, justifyContent: 'center', alignItems: 'center', width: 80, height: '100%', borderRadius: BorderRadius.l, marginRight: Spacing.s },
@@ -400,7 +456,7 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', marginTop: 60, opacity: 0.5 },
   emptyText: { fontSize: 18, fontWeight: '600', color: Colors.light.textSecondary, marginTop: Spacing.m },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalCard: { width: '80%', maxWidth: 400, backgroundColor: 'white', borderRadius: BorderRadius.xl, padding: Spacing.xl, alignItems: 'center', ...Shadows.strong },
+  modalCard: { width: '80%', maxWidth: 400, backgroundColor: Colors.light.card, borderRadius: BorderRadius.xl, padding: Spacing.xl, alignItems: 'center', ...Shadows.strong },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s, marginVertical: Spacing.l },
   modalInput: { fontSize: 32, fontWeight: 'bold', borderBottomWidth: 2, borderColor: Colors.light.border, textAlign: 'center', width: 100, color: Colors.light.primary },
   modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-around' },

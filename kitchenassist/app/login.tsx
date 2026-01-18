@@ -1,22 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
+import { View, Text, StyleSheet, Switch, useWindowDimensions } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../constants/theme';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, Layout } from '../constants/theme';
 import { API_BASE_URL, AUTH0_CLIENT_ID, AUTH0_DOMAIN } from '../constants/auth0';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
+import { PrimaryButton } from '../components/ui/PrimaryButton';
+import { SurfaceCard } from '../components/ui/SurfaceCard';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
     const router = useRouter();
+    const { width } = useWindowDimensions();
     const { signIn, userToken } = useAuth(); // <- read userToken here
     const { setUserId, setHouseholdId } = useApp();
     const [authError, setAuthError] = useState<string | null>(null);
     const [isSigningIn, setIsSigningIn] = useState(false);
     const [gmailOptIn, setGmailOptIn] = useState(false);
+    const isWide = width >= 900;
 
     const discovery = AuthSession.useAutoDiscovery(`https://${AUTH0_DOMAIN}`);
     const redirectUri = AuthSession.makeRedirectUri({ scheme: 'kitchenassist' });
@@ -135,43 +139,69 @@ export default function LoginScreen() {
 
     return (
         <View style={styles.container}>
-            <View style={styles.content}>
-                <Text style={Typography.header}>KitchenAssist</Text>
-
-                <View style={styles.authCard}>
-                    <Text style={Typography.subHeader}>Welcome Back</Text>
-                    <Text style={Typography.body}>
-                        Sign in to manage your fridge, grocery lists, and recipes.
-                    </Text>
-
-                    <View style={styles.gmailToggleRow}>
-                        <View style={styles.gmailToggleText}>
-                            <Text style={Typography.body}>Enable Gmail read-only</Text>
-                            <Text style={styles.gmailToggleHint}>
-                                Optional. Lets us read your Gmail metadata when you opt in.
-                            </Text>
+            <View style={[styles.shell, isWide && styles.shellWide]}>
+                <View style={[styles.hero, isWide && styles.heroWide]}>
+                    <View style={styles.brandRow}>
+                        <View style={styles.brandBadge}>
+                            <Text style={styles.brandBadgeText}>KA</Text>
                         </View>
-                        <Switch
-                            value={gmailOptIn}
-                            onValueChange={setGmailOptIn}
-                            disabled={isSigningIn}
-                        />
+                        <Text style={styles.brandText}>KitchenAssist</Text>
                     </View>
+                    <Text style={styles.heroTitle}>Stay ahead of the fridge.</Text>
+                    <Text style={styles.heroBody}>
+                        Track what you have, plan recipes, and keep your grocery list in sync across devices.
+                    </Text>
+                    <View style={styles.heroHighlights}>
+                        <View style={styles.heroPill}>
+                            <Text style={styles.heroPillText}>Waste insights</Text>
+                        </View>
+                        <View style={styles.heroPill}>
+                            <Text style={styles.heroPillText}>Price tracking</Text>
+                        </View>
+                        <View style={styles.heroPill}>
+                            <Text style={styles.heroPillText}>Smart lists</Text>
+                        </View>
+                    </View>
+                </View>
 
-                    <TouchableOpacity
-                        style={[styles.authButton, isSigningIn && styles.authButtonDisabled]}
-                        disabled={!request || isSigningIn}
-                        onPress={() => {
-                            setAuthError(null);
-                            promptAsync();
-                        }}
-                    >
-                        <Text style={styles.authButtonText}>
-                            {isSigningIn ? 'Signing in...' : 'Continue with Auth0'}
+                <View style={styles.content}>
+                    <SurfaceCard style={styles.authCard}>
+                        <Text style={Typography.subHeader}>Welcome back</Text>
+                        <Text style={styles.authBody}>
+                            Sign in to manage your fridge, grocery lists, and recipes.
                         </Text>
-                    </TouchableOpacity>
 
-                    {authError && <Text style={styles.authError}>{authError}</Text>}
+                        <View style={styles.gmailToggleRow}>
+                            <View style={styles.gmailToggleText}>
+                                <Text style={styles.toggleTitle}>Enable Gmail read-only</Text>
+                                <Text style={styles.gmailToggleHint}>
+                                    Optional. Lets us read your Gmail metadata when you opt in.
+                                </Text>
+                            </View>
+                            <Switch
+                                value={gmailOptIn}
+                                onValueChange={setGmailOptIn}
+                                disabled={isSigningIn}
+                                trackColor={{ false: Colors.light.border, true: Colors.light.success }}
+                                thumbColor={gmailOptIn ? Colors.light.card : Colors.light.textMuted}
+                            />
+                        </View>
+
+                        <PrimaryButton
+                            title={isSigningIn ? 'Signing in...' : 'Continue with Auth0'}
+                            disabled={!request || isSigningIn}
+                            onPress={() => {
+                                setAuthError(null);
+                                promptAsync();
+                            }}
+                        />
+
+                        {authError && (
+                            <View style={styles.authErrorBox}>
+                                <Text style={styles.authError}>{authError}</Text>
+                            </View>
+                        )}
+                    </SurfaceCard>
                 </View>
             </View>
         </View>
@@ -183,43 +213,128 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.light.background,
         justifyContent: 'center',
-        padding: Spacing.xl,
+        paddingHorizontal: Spacing.xl,
+        paddingVertical: Spacing.xxl,
+    },
+    shell: {
+        gap: Spacing.xl,
+        width: '100%',
+        maxWidth: Layout.pageMaxWidth,
+        alignSelf: 'center',
+    },
+    shellWide: {
+        flexDirection: 'row',
+        alignItems: 'stretch',
+        gap: Spacing.xxl,
+    },
+    hero: {
+        gap: Spacing.m,
+        padding: Layout.cardPadding,
+        borderRadius: BorderRadius.l,
+        backgroundColor: Colors.light.primaryBg,
+        borderWidth: 1,
+        borderColor: Colors.light.border,
+    },
+    heroWide: {
+        flex: 1,
+        minHeight: 360,
+        justifyContent: 'center',
+    },
+    heroTitle: {
+        fontSize: 28,
+        fontWeight: '800',
+        color: Colors.light.text,
+    },
+    heroBody: {
+        ...Typography.body,
+        color: Colors.light.textSecondary,
+    },
+    heroHighlights: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.s,
+    },
+    heroPill: {
+        backgroundColor: Colors.light.card,
+        paddingHorizontal: Spacing.m,
+        paddingVertical: Spacing.s,
+        borderRadius: BorderRadius.circle,
+        borderWidth: 1,
+        borderColor: Colors.light.border,
+    },
+    heroPillText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: Colors.light.textSecondary,
+    },
+    brandRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.s,
+    },
+    brandBadge: {
+        width: 36,
+        height: 36,
+        borderRadius: BorderRadius.s,
+        backgroundColor: Colors.light.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    brandBadgeText: {
+        color: Colors.light.card,
+        fontWeight: '800',
+        letterSpacing: 1,
+    },
+    brandText: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.light.text,
     },
     content: {
         gap: Spacing.xl,
-        maxWidth: 500,
+        maxWidth: Layout.contentMaxWidth,
         width: '100%',
         alignSelf: 'center',
     },
     authCard: {
-        backgroundColor: Colors.light.card,
-        borderRadius: BorderRadius.l,
-        padding: Spacing.l,
-        gap: Spacing.m,
-        ...Shadows.default,
+        gap: Spacing.l,
+    },
+    authBody: {
+        ...Typography.body,
+        color: Colors.light.textSecondary,
     },
     gmailToggleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: Spacing.m,
+        padding: Spacing.m,
+        backgroundColor: Colors.light.secondary,
+        borderRadius: BorderRadius.m,
     },
     gmailToggleText: {
         flex: 1,
+    },
+    toggleTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: Colors.light.text,
     },
     gmailToggleHint: {
         color: Colors.light.textSecondary,
         marginTop: Spacing.xs,
         fontSize: 12,
     },
-    authButton: {
-        backgroundColor: Colors.light.tint,
-        paddingVertical: Spacing.m,
+    authErrorBox: {
+        backgroundColor: Colors.light.dangerBg,
+        padding: Spacing.m,
         borderRadius: BorderRadius.m,
-        alignItems: 'center',
-        marginTop: Spacing.s,
+        borderWidth: 1,
+        borderColor: Colors.light.danger,
     },
-    authButtonDisabled: { opacity: 0.6 },
-    authButtonText: { color: 'white', fontWeight: '700', fontSize: 16 },
-    authError: { color: Colors.light.danger, marginTop: Spacing.xs, textAlign: 'center' },
+    authError: {
+        color: Colors.light.danger,
+        fontSize: 13,
+        fontWeight: '600',
+    },
 });

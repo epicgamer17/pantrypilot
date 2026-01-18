@@ -5,14 +5,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card'; // Import the Card component
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
+import { SurfaceCard } from '../../components/ui/SurfaceCard';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, Layout, Forms } from '../../constants/theme';
+import { areUnitsCompatible, denormalizeQuantity, normalizeQuantity } from '../../utils/unitConversion';
 import ItemNameAutocomplete from '../../components/ItemNameAutocomplete';
 import { Category, Item } from '../../types';
 
 type SortMode = 'aisle' | 'recipe' | 'az';
 
 export default function GroceryScreen() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, setAllGroceryItemsChecked, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems, purchaseHistory, userId, householdId } = useApp();
   const { userToken } = useAuth();
   const [sortMode, setSortMode] = useState<SortMode>('aisle');
@@ -27,12 +29,21 @@ export default function GroceryScreen() {
   const [editName, setEditName] = useState('');
   const [editQuantity, setEditQuantity] = useState('');
   const [editUnit, setEditUnit] = useState<Item['unit']>('unit');
+  const [newItemQuantity, setNewItemQuantity] = useState('1');
+  const [newItemUnit, setNewItemUnit] = useState<Item['unit']>('unit');
 
   const CATEGORY_OPTIONS = ['Produce', 'Dairy', 'Meat', 'Pantry', 'Frozen', 'Beverages', 'Other'];
   const ALLOWED_UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup', 'ea', 'tbsp', 'tsp', 'clove', 'cloves', 'leaf', 'leaves', 'sprig', 'sprigs'];
   const API_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
   const STAPLE_NAMES = ['Milk', 'Eggs', 'Bread', 'Cheese', 'Rice', 'Bananas', 'Butter'];
   const [stapleItems, setStapleItems] = useState<{ name: string; category?: string }[]>([]);
+  const shellWidth = Math.min(width - Spacing.xl * 2, Layout.pageMaxWidth);
+  const isWide = width >= 1024;
+  const isCompact = width < 700;
+  const sidePanelWidth = isWide ? 320 : shellWidth;
+  const listWidth = isWide ? shellWidth - sidePanelWidth - Spacing.xl : shellWidth;
+  const listPadding = isCompact ? Spacing.xs : Spacing.s;
+  const listHeight = Platform.OS === 'web' ? height - Spacing.l * 2 : undefined;
 
   const getAuthHeaders = () => {
     const headers: Record<string, string> = {};
@@ -287,123 +298,60 @@ export default function GroceryScreen() {
     setEditModalVisible(false);
   };
 
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={styles.page}>
-        <View style={[styles.container, { maxWidth: 800 }]}>
-          <View style={styles.headerRow}>
-            <Text style={Typography.header}>Shopping List</Text>
+  const parseQuantityInput = (value: string) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  };
+
+  const findExistingItem = (name: string) => {
+    const normalized = name.trim().toLowerCase();
+    return groceryList.find((item) => item.name?.toLowerCase() === normalized);
+  };
+
+  const applyQuantityUpdate = (name: string, quantity: number, unit: Item['unit'], category?: string) => {
+    const existing = findExistingItem(name);
+    if (!existing) return false;
+    const existingUnit = (existing.unit as Item['unit']) ?? 'unit';
+    if (!areUnitsCompatible(existingUnit, unit)) {
+      return false;
+    }
+    const baseQty = normalizeQuantity(quantity, unit);
+    const converted = denormalizeQuantity(baseQty, existingUnit);
+    const nextQty = Number(existing.quantity ?? 0) + converted;
+    updateGroceryItem(existing.id, { quantity: Number(nextQty.toFixed(2)), unit: existingUnit });
+    return true;
+  };
+
+  const renderListHeader = () => (
+    <>
+      <SurfaceCard style={[styles.headerCard, isCompact && styles.headerCardCompact]} variant="soft">
+        <View style={styles.headerRow}>
+          <View style={styles.headerText}>
+            <Text style={styles.pageTitle}>Shopping List</Text>
+            <Text style={styles.pageSubtitle}>Stay stocked and keep recipes on track.</Text>
+          </View>
+          {!isCompact && (
             <TouchableOpacity style={styles.addButton} onPress={() => setShowAddModal(true)}>
               <MaterialCommunityIcons name="plus" size={24} color="white" />
             </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.clearButton,
-              {
-                backgroundColor: Colors.light.infoBg,
-                alignSelf: 'flex-end', // Prevents stretching vertically
-                paddingHorizontal: 10,  // Narrower horizontal footprint
-                paddingVertical: 6,    // Shorter vertical footprint
-                marginRight: 8,        // Space between this and "Select all"
-                flex: 0,               // Ensures it doesn't grow to fill space
-              }
-            ]}
-            onPress={handleReadEmails}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <MaterialCommunityIcons name="email-sync" size={14} color={Colors.light.info} />
-              <Text style={[styles.clearButtonText, { color: Colors.light.info, fontSize: 11 }]}>
-                Read Email Receipt
-              </Text>
-            </View>
-          </TouchableOpacity>
-          <View style={styles.quickAddContainer}>
-            <Text style={Typography.label}>Quick Add</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.quickAddScroll}
-              nestedScrollEnabled
-              directionalLockEnabled
-            >
-              {/* 1. Recents */}
-              {recentItems.map(item => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.chip, styles.chipRecent]}
-                  onPress={() =>
-                    addToGroceryList(
-                      item.name,
-                      item.category,
-                      (item as { price?: number }).price ?? item.purchasePrice,
-                    )
-                  }
-                >
-                  <MaterialCommunityIcons name="refresh" size={16} color={Colors.light.text} />
-                  <Text style={styles.chipText}>{item.name}</Text>
-                </TouchableOpacity>
-              ))}
-
-              {/* 2. Staples */}
-              {commonStaples.map((item) => (
-                <TouchableOpacity
-                  key={item.name}
-                  style={[styles.chip, styles.chipStaple]}
-                  onPress={() => addToGroceryList(item.name, item.category ?? 'Other', 0)}
-                >
-                  <MaterialCommunityIcons name="plus" size={16} color={Colors.light.info} />
-                  <Text style={styles.chipText}>{item.name}</Text>
-                </TouchableOpacity>
-              ))}
-
-              {/* 3. Recipes */}
-              {recipes.map(recipe => (
-                <TouchableOpacity
-                  key={recipe.id}
-                  style={[styles.chip, styles.chipRecipe]}
-                  onPress={() => {
-                    addItemsToGroceryList(
-                      recipe.ingredients.map(ing => ({
-                        name: ing.name,
-                        category: undefined,
-                        price: 0,
-                        fromRecipe: recipe.name,
-                        unit: ing.unit,
-                        quantity: ing.quantity,
-                      }))
-                    );
-                  }}
-                >
-                  <MaterialCommunityIcons name="chef-hat" size={16} color={Colors.light.warning} />
-                  <Text style={styles.chipText}>{recipe.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-
-          {/* SORT TOGGLES */}
-          <View style={styles.sortContainer}>
+          )}
+        </View>
+        {isCompact && (
+          <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.sortBtn, sortMode === 'aisle' && styles.sortBtnActive]}
-              onPress={() => setSortMode('aisle')}
+              style={styles.compactAction}
+              onPress={() => setAllGroceryItemsChecked(true)}
             >
-              <Text style={[styles.sortBtnText, sortMode === 'aisle' && styles.sortBtnTextActive]}>By Aisle</Text>
+              <MaterialCommunityIcons name="check-all" size={16} color={Colors.light.textSecondary} />
+              <Text style={styles.compactActionText}>Select all</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortBtn, sortMode === 'recipe' && styles.sortBtnActive]}
-              onPress={() => setSortMode('recipe')}
-            >
-              <Text style={[styles.sortBtnText, sortMode === 'recipe' && styles.sortBtnTextActive]}>By Recipe</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
-              onPress={() => setSortMode('az')}
-            >
-              <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+            <TouchableOpacity style={styles.iconButton} onPress={handleReadEmails}>
+              <MaterialCommunityIcons name="email-sync" size={18} color={Colors.light.info} />
             </TouchableOpacity>
           </View>
-          <View style={styles.actionsRow}>
+        )}
+        {!isCompact && (
+          <View style={styles.headerActionsRow}>
             <TouchableOpacity
               style={styles.clearButton}
               onPress={() => {
@@ -417,105 +365,330 @@ export default function GroceryScreen() {
                 <Text style={styles.clearButtonText}>Clear purchased</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity style={styles.emailIconButton} onPress={handleReadEmails}>
+              <MaterialCommunityIcons name="email-sync" size={16} color={Colors.light.info} />
+            </TouchableOpacity>
           </View>
+        )}
+      </SurfaceCard>
 
-          {/* MAIN LIST */}
-          <SectionList
-            sections={sections}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{ paddingBottom: 100 }}
-            stickySectionHeadersEnabled={false}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <MaterialCommunityIcons name="cart-off" size={48} color={Colors.light.border} />
-                <Text style={styles.emptyText}>List is empty</Text>
-              </View>
-            }
-            renderSectionHeader={({ section: { title } }) => (
-              <Text style={styles.sectionHeader}>{title}</Text>
-            )}
-            renderItem={({ item }) => (
-              <Card
-                variant="elevated"
-                onPress={() => toggleGroceryItem(item.id)}
-                style={styles.cardOverrides}
+      <SurfaceCard style={[styles.quickAddCard, isCompact && styles.quickAddCardCompact]}>
+        <Text style={Typography.label}>Quick Add</Text>
+
+        {isCompact ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickAddScroll}
+            nestedScrollEnabled
+            directionalLockEnabled
+          >
+            {recentItems.map(item => (
+              <TouchableOpacity
+                key={`recent-${item.id}`}
+                style={[styles.chip, styles.chipRecent]}
+                onPress={() =>
+                  addToGroceryList(
+                    item.name,
+                    item.category,
+                    (item as { price?: number }).price ?? item.purchasePrice,
+                  )
+                }
               >
-                <MaterialCommunityIcons
-                  name={item.checked ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
-                  size={24}
-                  color={item.checked ? Colors.light.success : Colors.light.border}
-                />
-                <View style={{ flex: 1, marginLeft: Spacing.m }}>
-                  <Text style={[styles.itemName, item.checked && styles.itemChecked]}>
-                    {Number(((item.quantity ?? 1) as number).toFixed(2))}
-                    {formatUnit(item.unit, item.quantity ?? 1)
-                      ? ` ${formatUnit(item.unit, item.quantity ?? 1)}`
-                      : ''}{' '}
-                    {item.name?.toLowerCase()}
-                    {item.bestStoreItemName && item.packageQuantity
-                      ? ` (${item.bestStoreItemName} ${item.packageQuantity}${
-                          formatUnit(item.packageUnit, item.packageQuantity)
-                            ? ` ${formatUnit(item.packageUnit, item.packageQuantity)}`
-                            : ''
-                        })`
-                      : ''}
-                  </Text>
-                  {item.targetPrice > 0 && (
-                    <Text style={Typography.caption}>
-                      {Number(((item.quantity ?? 1) as number).toFixed(2))} x ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
-                    </Text>
-                  )}
-                  {item.targetPrice === 0 && (
-                    <Text style={styles.estimateMissing}>No estimate</Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => openEditModal(item)}
-                >
-                  <MaterialCommunityIcons name="pencil" size={18} color={Colors.light.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => {
-                    const storeUrl =
-                      item.itemUrl ||
-                      (item.bestStoreName || item.bestStoreItemName
-                        ? `https://www.google.com/search?q=${encodeURIComponent(
-                            `${item.bestStoreName ?? ''} ${item.bestStoreItemName ?? item.name ?? ''}`.trim()
-                          )}`
-                        : undefined);
-                    if (storeUrl) {
-                      Linking.openURL(storeUrl);
+                <MaterialCommunityIcons name="refresh" size={16} color={Colors.light.text} />
+                <Text style={styles.chipText}>{item.name}</Text>
+              </TouchableOpacity>
+            ))}
+            {commonStaples.map((item) => (
+              <TouchableOpacity
+                key={`staple-${item.name}`}
+                style={[styles.chip, styles.chipStaple]}
+                onPress={() => addToGroceryList(item.name, item.category ?? 'Other', 0)}
+              >
+                <MaterialCommunityIcons name="plus" size={16} color={Colors.light.info} />
+                <Text style={styles.chipText}>{item.name}</Text>
+              </TouchableOpacity>
+            ))}
+            {recipes.map(recipe => (
+              <TouchableOpacity
+                key={`recipe-${recipe.id}`}
+                style={[styles.chip, styles.chipRecipe]}
+                onPress={() => {
+                  addItemsToGroceryList(
+                    recipe.ingredients.map(ing => ({
+                      name: ing.name,
+                      category: undefined,
+                      price: 0,
+                      fromRecipe: recipe.name,
+                      unit: ing.unit,
+                      quantity: ing.quantity,
+                    }))
+                  );
+                }}
+              >
+                <MaterialCommunityIcons name="chef-hat" size={16} color={Colors.light.warning} />
+                <Text style={styles.chipText}>{recipe.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <>
+            <View style={styles.quickAddSection}>
+              <Text style={styles.quickAddTitle}>Recents</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickAddScroll}
+                nestedScrollEnabled
+                directionalLockEnabled
+              >
+                {recentItems.map(item => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.chip, styles.chipRecent]}
+                    onPress={() =>
+                      addToGroceryList(
+                        item.name,
+                        item.category,
+                        (item as { price?: number }).price ?? item.purchasePrice,
+                      )
                     }
-                  }}
+                  >
+                    <MaterialCommunityIcons name="refresh" size={16} color={Colors.light.text} />
+                    <Text style={styles.chipText}>{item.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.quickAddDivider} />
+
+            <View style={styles.quickAddSection}>
+              <Text style={styles.quickAddTitle}>Staples</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickAddScroll}
+                nestedScrollEnabled
+                directionalLockEnabled
+              >
+                {commonStaples.map((item) => (
+                  <TouchableOpacity
+                    key={item.name}
+                    style={[styles.chip, styles.chipStaple]}
+                    onPress={() => addToGroceryList(item.name, item.category ?? 'Other', 0)}
+                  >
+                    <MaterialCommunityIcons name="plus" size={16} color={Colors.light.info} />
+                    <Text style={styles.chipText}>{item.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.quickAddDivider} />
+
+            <View style={styles.quickAddSection}>
+              <Text style={styles.quickAddTitle}>Recipes</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.quickAddScroll}
+                nestedScrollEnabled
+                directionalLockEnabled
+              >
+                {recipes.map(recipe => (
+                  <TouchableOpacity
+                    key={recipe.id}
+                    style={[styles.chip, styles.chipRecipe]}
+                    onPress={() => {
+                      addItemsToGroceryList(
+                        recipe.ingredients.map(ing => ({
+                          name: ing.name,
+                          category: undefined,
+                          price: 0,
+                          fromRecipe: recipe.name,
+                          unit: ing.unit,
+                          quantity: ing.quantity,
+                        }))
+                      );
+                    }}
+                  >
+                    <MaterialCommunityIcons name="chef-hat" size={16} color={Colors.light.warning} />
+                    <Text style={styles.chipText}>{recipe.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </>
+        )}
+      </SurfaceCard>
+    </>
+  );
+
+  return (
+    <GestureHandlerRootView style={[styles.root, Platform.OS === 'web' && styles.rootWeb]}>
+      <View style={[styles.page, Platform.OS === 'web' && styles.pageWeb]}>
+        <View style={[styles.shell, { width: shellWidth }, isWide && styles.shellWide, isCompact && styles.shellCompact]}>
+          {isWide && (
+            <View style={[styles.sidePanel, { width: sidePanelWidth }]}>
+              {renderListHeader()}
+              <SurfaceCard style={styles.sortCard}>
+                <Text style={Typography.label}>Sort</Text>
+                <View style={styles.sortContainer}>
+                  <TouchableOpacity
+                    style={[styles.sortBtn, sortMode === 'aisle' && styles.sortBtnActive]}
+                    onPress={() => setSortMode('aisle')}
+                  >
+                    <Text style={[styles.sortBtnText, sortMode === 'aisle' && styles.sortBtnTextActive]}>By Aisle</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sortBtn, sortMode === 'recipe' && styles.sortBtnActive]}
+                    onPress={() => setSortMode('recipe')}
+                  >
+                    <Text style={[styles.sortBtnText, sortMode === 'recipe' && styles.sortBtnTextActive]}>By Recipe</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
+                    onPress={() => setSortMode('az')}
+                  >
+                    <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+                  </TouchableOpacity>
+                </View>
+              </SurfaceCard>
+            </View>
+          )}
+          <View style={[styles.listPanel, { width: isWide ? listWidth : shellWidth, height: listHeight }]}>
+            {!isWide && (
+              <View style={[styles.sortBar, { paddingHorizontal: listPadding }, isCompact && styles.sortBarCompact]}>
+                <View style={styles.sortContainer}>
+                  <TouchableOpacity
+                    style={[styles.sortBtn, sortMode === 'aisle' && styles.sortBtnActive]}
+                    onPress={() => setSortMode('aisle')}
+                  >
+                    <Text style={[styles.sortBtnText, sortMode === 'aisle' && styles.sortBtnTextActive]}>By Aisle</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sortBtn, sortMode === 'recipe' && styles.sortBtnActive]}
+                    onPress={() => setSortMode('recipe')}
+                  >
+                    <Text style={[styles.sortBtnText, sortMode === 'recipe' && styles.sortBtnTextActive]}>By Recipe</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
+                    onPress={() => setSortMode('az')}
+                  >
+                    <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            <SectionList
+              sections={sections}
+              keyExtractor={item => item.id}
+              style={[styles.list, Platform.OS === 'web' && styles.listWeb]}
+              scrollEnabled
+              contentContainerStyle={{ paddingBottom: 100, paddingHorizontal: listPadding }}
+              ListHeaderComponent={!isWide ? renderListHeader : undefined}
+              ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+              stickySectionHeadersEnabled={false}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <MaterialCommunityIcons name="cart-off" size={48} color={Colors.light.border} />
+                  <Text style={styles.emptyText}>List is empty</Text>
+                </View>
+              }
+              renderSectionHeader={({ section: { title } }) => (
+                <Text style={styles.sectionHeader}>{title}</Text>
+              )}
+              renderItem={({ item }) => (
+                <Card
+                  variant="elevated"
+                  onPress={() => toggleGroceryItem(item.id)}
+                  style={styles.cardOverrides}
                 >
                   <MaterialCommunityIcons
-                    name="open-in-new"
-                    size={18}
-                    color={Colors.light.textSecondary}
+                    name={item.checked ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+                    size={24}
+                    color={item.checked ? Colors.light.success : Colors.light.border}
                   />
-                </TouchableOpacity>
-              </Card>
-            )}
-            ListFooterComponent={
-              estimatedTotal > 0 ? (
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Estimated total</Text>
-                  <Text style={styles.totalValue}>${estimatedTotal.toFixed(2)}</Text>
-                </View>
-              ) : null
-            }
-          />
+                  <View style={{ flex: 1, marginLeft: Spacing.m }}>
+                    <Text style={[styles.itemName, item.checked && styles.itemChecked]}>
+                      {Number(((item.quantity ?? 1) as number).toFixed(2))}
+                      {formatUnit(item.unit, item.quantity ?? 1)
+                        ? ` ${formatUnit(item.unit, item.quantity ?? 1)}`
+                        : ''}{' '}
+                      {item.name?.toLowerCase()}
+                      {item.bestStoreItemName && item.packageQuantity
+                        ? ` (${item.bestStoreItemName} ${item.packageQuantity}${
+                            formatUnit(item.packageUnit, item.packageQuantity)
+                              ? ` ${formatUnit(item.packageUnit, item.packageQuantity)}`
+                              : ''
+                          })`
+                        : ''}
+                    </Text>
+                    {item.targetPrice > 0 && (
+                      <Text style={Typography.caption}>
+                        {Number(((item.quantity ?? 1) as number).toFixed(2))} x ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
+                      </Text>
+                    )}
+                    {item.targetPrice === 0 && (
+                      <Text style={styles.estimateMissing}>No estimate</Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={() => openEditModal(item)}
+                  >
+                    <MaterialCommunityIcons name="pencil" size={18} color={Colors.light.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.editButton, styles.linkButton]}
+                    onPress={() => {
+                      const storeUrl =
+                        item.itemUrl ||
+                        (item.bestStoreName || item.bestStoreItemName
+                          ? `https://www.google.com/search?q=${encodeURIComponent(
+                              `${item.bestStoreName ?? ''} ${item.bestStoreItemName ?? item.name ?? ''}`.trim()
+                            )}`
+                          : undefined);
+                      if (storeUrl) {
+                        Linking.openURL(storeUrl);
+                      }
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="open-in-new"
+                      size={18}
+                      color={Colors.light.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </Card>
+              )}
+              ListFooterComponent={
+                estimatedTotal > 0 ? (
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Estimated total</Text>
+                    <Text style={styles.totalValue}>${estimatedTotal.toFixed(2)}</Text>
+                  </View>
+                ) : null
+              }
+            />
+          </View>
         </View>
       </View>
+
+      {isCompact && (
+        <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
+          <MaterialCommunityIcons name="plus" size={26} color="white" />
+        </TouchableOpacity>
+      )}
 
       <Modal visible={moveModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Move purchased items?</Text>
-            <Text style={Typography.caption}>
-              Selected items move to your pantry. Unselected items are removed.
+            <Text style={styles.modalTitle}>Organize Purchased Items</Text>
+            <Text style={styles.modalSubtitle}>
+              Move selected items to your pantry and remove the rest.
             </Text>
 
             <View style={styles.selectionActions}>
@@ -525,13 +698,13 @@ export default function GroceryScreen() {
                   setSelectedPurchasedIds(new Set(purchasedItems.map((item) => item.id)))
                 }
               >
-                <Text style={styles.selectBtnText}>Select all</Text>
+                <Text style={styles.selectBtnText}>Select all purchased</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.removeAllBtn}
                 onPress={handleRemoveAllPurchased}
               >
-                <Text style={styles.removeAllBtnText}>Remove all</Text>
+                <Text style={styles.removeAllBtnText}>Clear selection</Text>
               </TouchableOpacity>
             </View>
 
@@ -560,7 +733,7 @@ export default function GroceryScreen() {
                 style={styles.cancelBtn}
                 onPress={() => setMoveModalVisible(false)}
               >
-                <Text style={styles.cancelText}>Cancel</Text>
+                <Text style={styles.cancelText}>Keep list</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -568,7 +741,7 @@ export default function GroceryScreen() {
                 ]}
                 onPress={handleMoveSelectedToFridge}
               >
-                <Text style={styles.saveText}>Move to pantry</Text>
+                <Text style={styles.saveText}>Move selected to pantry</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -643,12 +816,48 @@ export default function GroceryScreen() {
                 setSelectedItemId(item.id);
               }}
               onCreate={(value) => {
-                addToGroceryList(value, newItemCategory, 0);
+                const quantity = parseQuantityInput(newItemQuantity);
+                const merged = applyQuantityUpdate(value, quantity, newItemUnit, newItemCategory);
+                if (!merged) {
+                  addItemsToGroceryList([
+                    {
+                      name: value,
+                      category: newItemCategory,
+                      price: 0,
+                      quantity,
+                      unit: newItemUnit,
+                    },
+                  ]);
+                }
                 setShowAddModal(false);
                 setNewItemName('');
                 setSelectedItemId(null);
+                setNewItemQuantity('1');
+                setNewItemUnit('unit');
               }}
             />
+
+            <Text style={Typography.label}>Quantity</Text>
+            <TextInput
+              value={newItemQuantity}
+              onChangeText={setNewItemQuantity}
+              style={styles.input}
+              keyboardType="numeric"
+              placeholder="1"
+            />
+
+            <Text style={Typography.label}>Unit</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitRow}>
+              {ALLOWED_UNITS.map((unit) => (
+                <TouchableOpacity
+                  key={unit}
+                  style={[styles.unitChip, newItemUnit === unit && styles.unitChipActive]}
+                  onPress={() => setNewItemUnit(unit)}
+                >
+                  <Text style={[styles.unitChipText, newItemUnit === unit && styles.unitChipTextActive]}>{unit}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <Text style={Typography.label}>Category</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRow}>
@@ -678,10 +887,24 @@ export default function GroceryScreen() {
                 style={styles.saveBtn}
                 onPress={() => {
                   if (!newItemName.trim()) return;
-                  addToGroceryList(newItemName.trim(), newItemCategory, 0);
+                  const quantity = parseQuantityInput(newItemQuantity);
+                  const merged = applyQuantityUpdate(newItemName.trim(), quantity, newItemUnit, newItemCategory);
+                  if (!merged) {
+                    addItemsToGroceryList([
+                      {
+                        name: newItemName.trim(),
+                        category: newItemCategory,
+                        price: 0,
+                        quantity,
+                        unit: newItemUnit,
+                      },
+                    ]);
+                  }
                   setShowAddModal(false);
                   setNewItemName('');
                   setSelectedItemId(null);
+                  setNewItemQuantity('1');
+                  setNewItemUnit('unit');
                 }}
               >
                 <Text style={styles.saveText}>Add</Text>
@@ -695,14 +918,139 @@ export default function GroceryScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: Colors.light.background, paddingTop: 60 },
-  container: { flex: 1, paddingHorizontal: Spacing.l, width: '100%', alignSelf: 'center' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.m },
+  root: {
+    flex: 1,
+    minHeight: 0,
+    height: '100%',
+  },
+  rootWeb: {
+    height: '100vh',
+  },
+  page: { flex: 1, minHeight: 0, height: '100%', backgroundColor: Colors.light.background, paddingVertical: Spacing.l },
+  pageWeb: {
+    height: '100vh',
+  },
+  shell: {
+    alignSelf: 'center',
+    gap: Spacing.xl,
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+    flexGrow: 1,
+    height: '100%',
+  },
+  shellCompact: {
+    gap: Spacing.l,
+  },
+  shellWide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.xl,
+    minHeight: 0,
+  },
+  sidePanel: {
+    gap: Spacing.l,
+  },
+  listPanel: {
+    flex: 1,
+    minHeight: 0,
+    gap: Spacing.s,
+    flexGrow: 1,
+    height: '100%',
+  },
+  list: {
+    flex: 1,
+    minHeight: 0,
+    flexGrow: 1,
+    height: '100%',
+  },
+  listWeb: {
+    overflow: 'auto',
+    maxHeight: '100%',
+  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.l },
+  headerText: { flex: 1, gap: Spacing.xs },
+  pageTitle: { fontSize: 26, fontWeight: '800', color: Colors.light.text },
+  pageSubtitle: { ...Typography.body, color: Colors.light.textSecondary },
   addButton: { width: 44, height: 44, borderRadius: BorderRadius.circle, backgroundColor: Colors.light.primary, justifyContent: 'center', alignItems: 'center', ...Shadows.default },
 
+  headerCard: {
+    padding: Layout.cardPadding,
+  },
+  headerCardCompact: {
+    padding: Spacing.l,
+  },
+  headerActions: {
+    marginTop: Spacing.s,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerActionsRow: {
+    marginTop: Spacing.s,
+    flexDirection: 'row',
+    gap: Spacing.s,
+    alignItems: 'center',
+  },
+  emailIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.circle,
+    backgroundColor: Colors.light.infoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.light.info,
+  },
+  compactAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.s,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.secondary,
+  },
+  compactActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.textSecondary,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.circle,
+    backgroundColor: Colors.light.infoBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.light.info,
+  },
+  quickAddCard: {
+    padding: Spacing.l,
+    gap: Spacing.m,
+  },
+  quickAddCardCompact: {
+    padding: Spacing.m,
+    gap: Spacing.s,
+  },
+  quickAddSection: {
+    gap: Spacing.s,
+  },
+  quickAddTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.light.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   // Quick Add
-  quickAddContainer: { marginBottom: Spacing.l },
   quickAddScroll: { paddingRight: Spacing.xl, gap: Spacing.s },
+  quickAddDivider: {
+    height: 1,
+    backgroundColor: Colors.light.border,
+    opacity: 0.6,
+  },
   chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.card, paddingVertical: 8, paddingHorizontal: 12, borderRadius: BorderRadius.circle, gap: 6, ...Shadows.soft, borderWidth: 1, borderColor: 'transparent' },
   chipText: { fontSize: 13, fontWeight: '600', color: Colors.light.text },
 
@@ -712,7 +1060,17 @@ const styles = StyleSheet.create({
   chipRecipe: { borderColor: Colors.light.warningBg, backgroundColor: Colors.light.warningBg },
 
   // Sort
-  sortContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.m, padding: 4, marginBottom: Spacing.m },
+  sortBar: {
+    paddingTop: Spacing.s,
+  },
+  sortBarCompact: {
+    paddingTop: Spacing.xs,
+  },
+  sortCard: {
+    padding: Spacing.l,
+    gap: Spacing.m,
+  },
+  sortContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.m, padding: 4 },
   sortBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: BorderRadius.s },
   sortBtnActive: { backgroundColor: Colors.light.card, ...Shadows.soft },
   sortBtnText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 13 },
@@ -720,14 +1078,27 @@ const styles = StyleSheet.create({
 
   // List
   sectionHeader: { ...Typography.subHeader, fontSize: 18, marginTop: Spacing.l, marginBottom: Spacing.s, color: Colors.light.textSecondary },
-  actionsRow: { alignItems: 'flex-end', marginBottom: Spacing.m },
   clearButton: {
     backgroundColor: Colors.light.secondary,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: BorderRadius.s,
+    alignItems: 'center',
+    flex: 1,
   },
   clearButtonText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary },
+  fab: {
+    position: 'absolute',
+    right: Spacing.l,
+    bottom: Spacing.xl,
+    width: 56,
+    height: 56,
+    borderRadius: BorderRadius.circle,
+    backgroundColor: Colors.light.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.strong,
+  },
 
   // Card Overrides
   cardOverrides: {
@@ -758,14 +1129,10 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
   modalCard: { backgroundColor: Colors.light.card, borderRadius: BorderRadius.l, padding: 20, ...Shadows.strong },
   modalTitle: { ...Typography.subHeader, marginBottom: Spacing.m },
+  modalSubtitle: { ...Typography.body, color: Colors.light.textSecondary, marginBottom: Spacing.m },
   input: {
-    backgroundColor: Colors.light.background,
-    borderRadius: BorderRadius.m,
-    padding: Spacing.m,
-    fontSize: 16,
-    color: Colors.light.text,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
+    ...Forms.field,
+    ...Forms.fieldText,
   },
   categoryRow: { marginTop: 8, marginBottom: 12 },
   categoryChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: BorderRadius.l, backgroundColor: Colors.light.secondary, marginRight: 8 },
@@ -794,6 +1161,12 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: BorderRadius.s,
     backgroundColor: Colors.light.secondary,
+  },
+  linkButton: {
+    marginLeft: Spacing.s,
+  },
+  itemSeparator: {
+    height: Spacing.s,
   },
 
   emptyState: { alignItems: 'center', marginTop: 50 },

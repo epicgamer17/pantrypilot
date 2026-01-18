@@ -16,11 +16,13 @@ import {
     Switch,
     Linking
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
 import { Recipe, Ingredient } from '../../types';
 import { Card } from '../../components/ui/Card';
+import { SurfaceCard } from '../../components/ui/SurfaceCard';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
+import { Colors, Spacing, Typography, BorderRadius, Shadows, Layout } from '../../constants/theme';
 import { fetchItemPrices, fetchItemsByIds, ensureItemByName } from '../../context/appContext/api';
 import { normalizeObjectId } from '../../context/appContext/utils';
 import { areUnitsCompatible, convertQuantity, normalizeQuantity } from '../../utils/unitConversion';
@@ -31,10 +33,14 @@ type ViewMode = 'household' | 'public';
 export default function RecipesScreen() {
     const API_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3001' : 'http://localhost:3001';
     const { width } = useWindowDimensions();
-    const numColumns = width > 1024 ? 3 : width > 700 ? 2 : 1;
+    const isCompact = width < 720;
+    const baseColumns = width > 1100 ? 3 : width > 820 ? 2 : 1;
+    const numColumns = isCompact ? 1 : baseColumns;
     const gap = Spacing.m;
-    const padding = Spacing.xl;
-    const cardWidth = (width - (padding * 2) - (gap * (numColumns - 1))) / numColumns;
+    const shellPadding = Spacing.xl;
+    const shellWidth = Math.min(width - shellPadding * 2, Layout.pageMaxWidth);
+    const contentWidth = shellWidth - shellPadding * 2;
+    const cardWidth = (contentWidth - (gap * (numColumns - 1))) / numColumns;
 
     const {
         recipes: householdRecipes,
@@ -829,149 +835,201 @@ export default function RecipesScreen() {
         setModalVisible(false);
     };
 
-    return (
-        <View style={styles.container}>
-            {/* STABILIZED HEADER */}
-            <View style={styles.headerContainer}>
-                {/* Row 1: Title and Toggle (Fixed Positions) */}
-                <View style={styles.headerTopRow}>
-                    <Text style={Typography.header}>Recipes</Text>
+    const toggleTabs = (
+        <View style={styles.stickyTabs}>
+            <View style={styles.toggleContainer}>
+                <TouchableOpacity
+                    style={[styles.toggleBtn, viewMode === 'household' && styles.toggleBtnActive]}
+                    onPress={() => setViewMode('household')}
+                >
+                    <Text style={[styles.toggleText, viewMode === 'household' && styles.toggleTextActive]}>My Recipes</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.toggleBtn, viewMode === 'public' && styles.toggleBtnActive]}
+                    onPress={() => setViewMode('public')}
+                >
+                    <Text style={[styles.toggleText, viewMode === 'public' && styles.toggleTextActive]}>Discover</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
 
-                    {/* View Mode Toggle */}
-                    <View style={styles.toggleContainer}>
-                        <TouchableOpacity
-                            style={[styles.toggleBtn, viewMode === 'household' && styles.toggleBtnActive]}
-                            onPress={() => setViewMode('household')}
-                        >
-                            <Text style={[styles.toggleText, viewMode === 'household' && styles.toggleTextActive]}>My Recipes</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.toggleBtn, viewMode === 'public' && styles.toggleBtnActive]}
-                            onPress={() => setViewMode('public')}
-                        >
-                            <Text style={[styles.toggleText, viewMode === 'public' && styles.toggleTextActive]}>Discover</Text>
-                        </TouchableOpacity>
+    const headerContent = (
+            <SurfaceCard style={[styles.headerCard, isCompact && styles.headerCardCompact]} variant="soft">
+                <View style={[styles.headerTopRow, isCompact && styles.headerTopRowCompact]}>
+                    <View style={[styles.titleBlock, isCompact && styles.titleBlockCompact]}>
+                        <Text style={Typography.header}>Recipes</Text>
+                        <Text style={styles.subtitleText}>Find, cook, and organize your go-to meals.</Text>
                     </View>
-                </View>
 
-                <View style={styles.headerControlsRow}>
-                    <View style={styles.controlsLeft}>
-                        <View style={styles.filterRow}>
+                    {!isCompact && (
+                        <View style={styles.toggleContainer}>
                             <TouchableOpacity
-                                style={[styles.filterChip, hideAiRecipes && styles.filterChipActive]}
-                                onPress={() => setHideAiRecipes((prev) => !prev)}
+                                style={[styles.toggleBtn, viewMode === 'household' && styles.toggleBtnActive]}
+                                onPress={() => setViewMode('household')}
                             >
-                                <Text style={[styles.filterChipText, hideAiRecipes && styles.filterChipTextActive]}>
-                                    Hide AI recipes
-                                </Text>
+                                <Text style={[styles.toggleText, viewMode === 'household' && styles.toggleTextActive]}>My Recipes</Text>
                             </TouchableOpacity>
-                        </View>
-
-                        {/* Sort Controls */}
-                        <View style={styles.sortRow}>
-                            <Text style={styles.sortLabel}>Sort by</Text>
-                            <View style={styles.sortPills}>
-                                <TouchableOpacity
-                                    style={[styles.sortPill, sortBy === 'cost' && styles.sortPillActive]}
-                                    onPress={() => setSortBy('cost')}
-                                >
-                                    <Text style={[styles.sortPillText, sortBy === 'cost' && styles.sortPillTextActive]}>
-                                        Price
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.sortPill, sortBy === 'expiry' && styles.sortPillActive]}
-                                    onPress={() => setSortBy('expiry')}
-                                >
-                                    <Text style={[styles.sortPillText, sortBy === 'expiry' && styles.sortPillTextActive]}>
-                                        Expiry
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.sortPill, sortBy === 'missing' && styles.sortPillActive]}
-                                    onPress={() => setSortBy('missing')}
-                                >
-                                    <Text style={[styles.sortPillText, sortBy === 'missing' && styles.sortPillTextActive]}>
-                                        Missing
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.sortPill, sortBy === 'az' && styles.sortPillActive]}
-                                    onPress={() => setSortBy('az')}
-                                >
-                                    <Text style={[styles.sortPillText, sortBy === 'az' && styles.sortPillTextActive]}>
-                                        A-Z
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    </View>
-
-                    {viewMode === 'household' && (
-                        <View style={styles.controlsRight}>
-                            <View style={styles.buttonRow}>
-                                <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
-                                    <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.centeredAddButton, styles.youtubeButton]} onPress={openYoutubeModal}>
-                                    <Text style={styles.centeredAddButtonText}>+ From YouTube</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.centeredAddButton, styles.articleButton]} onPress={openArticleModal}>
-                                    <Text style={styles.centeredAddButtonText}>+ From Article</Text>
-                                </TouchableOpacity>
-                            </View>
                             <TouchableOpacity
-                                onPress={handleGeminiCook}
-                                style={[styles.geminiButton, geminiLoading && styles.geminiButtonDisabled]}
-                                disabled={geminiLoading}
+                                style={[styles.toggleBtn, viewMode === 'public' && styles.toggleBtnActive]}
+                                onPress={() => setViewMode('public')}
                             >
-                                <LinearGradient
-                                    colors={['#2f80ff', '#8a5cff']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={styles.geminiGradient}
-                                >
-                                    {geminiLoading ? (
-                                        <ActivityIndicator color="white" />
-                                    ) : (
-                                        <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
-                                    )}
-                                </LinearGradient>
+                                <Text style={[styles.toggleText, viewMode === 'public' && styles.toggleTextActive]}>Discover</Text>
                             </TouchableOpacity>
                         </View>
                     )}
                 </View>
 
-                <View style={styles.searchRow}>
-                    <TextInput
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        placeholder="Search recipes or ingredients"
-                        placeholderTextColor={Colors.light.textMuted}
-                        style={styles.searchInput}
-                    />
-                </View>
-            </View>
+                    <View style={[styles.headerControlsRow, isCompact && styles.headerControlsStack]}>
+                        <View style={styles.controlsLeft}>
+                            <View style={styles.filterRow}>
+                                <TouchableOpacity
+                                    style={[styles.filterChip, hideAiRecipes && styles.filterChipActive]}
+                                    onPress={() => setHideAiRecipes((prev) => !prev)}
+                                >
+                                    <Text style={[styles.filterChipText, hideAiRecipes && styles.filterChipTextActive]}>
+                                        Hide AI recipes
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
 
-            {loadingPublic && viewMode === 'public' ? (
-                <ActivityIndicator size="large" color={Colors.light.primary} style={{ marginTop: 20 }} />
-            ) : (
-                <FlatList
-                    key={numColumns}
-                    numColumns={numColumns}
-                    columnWrapperStyle={numColumns > 1 ? { gap } : undefined}
-                    data={getSortedRecipes()}
-                    keyExtractor={r => r.id}
-                    contentContainerStyle={{ paddingBottom: 100 }}
-                    ListEmptyComponent={
-                        <Text style={styles.emptyText}>
-                            {viewMode === 'household' ? "No recipes yet. Add one!" : "No public recipes found."}
-                        </Text>
-                    }
-                    renderItem={({ item }) => {
-                        const { missingCount, minDaysToExpiry, totalCost } = item.meta;
-                        const isExpiring = minDaysToExpiry < 3;
-                        const isReady = missingCount === 0;
+                            <View style={styles.sortRow}>
+                                <Text style={styles.sortLabel}>Sort by</Text>
+                                <View style={[styles.sortPills, isCompact && styles.sortPillsWrap]}>
+                                    <TouchableOpacity
+                                        style={[styles.sortPill, sortBy === 'cost' && styles.sortPillActive]}
+                                        onPress={() => setSortBy('cost')}
+                                    >
+                                        <Text style={[styles.sortPillText, sortBy === 'cost' && styles.sortPillTextActive]}>
+                                            Price
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.sortPill, sortBy === 'expiry' && styles.sortPillActive]}
+                                        onPress={() => setSortBy('expiry')}
+                                    >
+                                        <Text style={[styles.sortPillText, sortBy === 'expiry' && styles.sortPillTextActive]}>
+                                            Expiry
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.sortPill, sortBy === 'missing' && styles.sortPillActive]}
+                                        onPress={() => setSortBy('missing')}
+                                    >
+                                        <Text style={[styles.sortPillText, sortBy === 'missing' && styles.sortPillTextActive]}>
+                                            Missing
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.sortPill, sortBy === 'az' && styles.sortPillActive]}
+                                        onPress={() => setSortBy('az')}
+                                    >
+                                        <Text style={[styles.sortPillText, sortBy === 'az' && styles.sortPillTextActive]}>
+                                            A-Z
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={[styles.controlsRight, isCompact && styles.controlsRightCompact]}>
+                            {!isCompact && (
+                                <>
+                                    <View style={styles.buttonRow}>
+                                        <TouchableOpacity style={[styles.actionButton, styles.actionButtonPrimary]} onPress={openNewRecipeModal}>
+                                            <MaterialCommunityIcons name="plus" size={16} color="white" />
+                                            <Text style={styles.actionButtonText}>New recipe</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.actionButton, styles.actionButtonYoutube]} onPress={openYoutubeModal}>
+                                            <MaterialCommunityIcons name="youtube" size={16} color="white" />
+                                            <Text style={styles.actionButtonText}>YouTube</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={[styles.actionButton, styles.actionButtonArticle]} onPress={openArticleModal}>
+                                            <MaterialCommunityIcons name="file-document-outline" size={16} color="white" />
+                                            <Text style={styles.actionButtonText}>Article</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={handleGeminiCook}
+                                        style={[styles.geminiButton, geminiLoading && styles.geminiButtonDisabled]}
+                                        disabled={geminiLoading}
+                                    >
+                                        <LinearGradient
+                                            colors={['#2f80ff', '#8a5cff']}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 1 }}
+                                            style={styles.geminiGradient}
+                                        >
+                                            {geminiLoading ? (
+                                                <ActivityIndicator color="white" />
+                                            ) : (
+                                                <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
+                                            )}
+                                        </LinearGradient>
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                        </View>
+                    </View>
+
+                    <View style={styles.searchRow}>
+                        <TextInput
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            placeholder="Search recipes or ingredients"
+                            placeholderTextColor={Colors.light.textMuted}
+                            style={styles.searchInput}
+                        />
+                    </View>
+                </SurfaceCard>
+        );
+
+    const sortedRecipes = getSortedRecipes();
+
+    return (
+        <View style={styles.container}>
+            <View style={[styles.shell, { width: shellWidth }]}>
+                {!isCompact && headerContent}
+
+                <View style={styles.listWrapper}>
+                    {loadingPublic && viewMode === 'public' ? (
+                        <ActivityIndicator size="large" color={Colors.light.primary} style={{ marginTop: 20 }} />
+                    ) : (
+                        <FlatList
+                            key={numColumns}
+                            numColumns={numColumns}
+                            columnWrapperStyle={numColumns > 1 ? { gap } : undefined}
+                            data={
+                                isCompact
+                                    ? [{ id: '__tabs__', type: 'tabs' } as any, ...sortedRecipes]
+                                    : sortedRecipes
+                            }
+                            keyExtractor={(item: any) => item.type === 'tabs' ? item.id : item.id}
+                            style={styles.list}
+                            contentContainerStyle={{ paddingBottom: 120, paddingTop: Spacing.l }}
+                            ListHeaderComponent={isCompact ? headerContent : undefined}
+                            stickyHeaderIndices={isCompact ? [1] : undefined}
+                            ListEmptyComponent={
+                                !isCompact ? (
+                                    <Text style={styles.emptyText}>
+                                        {viewMode === 'household' ? "No recipes yet. Add one!" : "No public recipes found."}
+                                    </Text>
+                                ) : null
+                            }
+                            ListFooterComponent={
+                                isCompact && sortedRecipes.length === 0 ? (
+                                    <Text style={styles.emptyText}>
+                                        {viewMode === 'household' ? "No recipes yet. Add one!" : "No public recipes found."}
+                                    </Text>
+                                ) : null
+                            }
+                            renderItem={({ item }) => {
+                                if (item.type === 'tabs') {
+                                    return toggleTabs;
+                                }
+                                const { missingCount, minDaysToExpiry, totalCost } = item.meta;
+                                const isExpiring = minDaysToExpiry < 3;
+                                const isReady = missingCount === 0;
 
                         return (
                             <Card
@@ -1054,8 +1112,42 @@ export default function RecipesScreen() {
                                 </View>
                             </Card>
                         );
-                    }}
-                />
+                            }}
+                        />
+                    )}
+                </View>
+            </View>
+
+            {isCompact && (
+                <View style={styles.fabColumn}>
+                    <TouchableOpacity style={[styles.fabButton, styles.fabPrimary]} onPress={openNewRecipeModal}>
+                        <MaterialCommunityIcons name="plus" size={20} color="white" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.fabButton, styles.fabYoutube]} onPress={openYoutubeModal}>
+                        <MaterialCommunityIcons name="youtube" size={20} color="white" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.fabButton, styles.fabArticle]} onPress={openArticleModal}>
+                        <MaterialCommunityIcons name="file-document-outline" size={20} color="white" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.fabButton}
+                        onPress={handleGeminiCook}
+                        disabled={geminiLoading}
+                    >
+                        <LinearGradient
+                            colors={['#2f80ff', '#8a5cff']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.fabGradient}
+                        >
+                            {geminiLoading ? (
+                                <ActivityIndicator color="white" />
+                            ) : (
+                                <Text style={styles.fabLabel}>AI</Text>
+                            )}
+                        </LinearGradient>
+                    </TouchableOpacity>
+                </View>
             )}
 
             {/* Modal for Creating/Editing Recipe */}
@@ -1474,37 +1566,16 @@ export default function RecipesScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: Spacing.xl, paddingTop: 60, backgroundColor: Colors.light.background },
-
-    // NEW HEADER STYLES
-    headerContainer: { marginBottom: Spacing.l },
-    headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-
-    // Centered Add Button
-    buttonRow: {
-        flexDirection: 'row',
-        gap: 10,
-        alignSelf: 'flex-end',
-    },
-    centeredAddButton: {
-        alignSelf: 'flex-end',
-        backgroundColor: Colors.light.primary,
-        paddingVertical: 10,
-        paddingHorizontal: 20,
-        borderRadius: BorderRadius.l,
-        ...Shadows.soft
-    },
-    youtubeButton: {
-        backgroundColor: '#FF0000',
-    },
-    articleButton: {
-        backgroundColor: '#FF6B35',
-    },
-    centeredAddButtonText: {
-        color: 'white',
-        fontWeight: '700',
-        fontSize: 16
-    },
+    container: { flex: 1, backgroundColor: Colors.light.background, alignItems: 'center', position: 'relative' },
+    shell: { padding: Spacing.xl, paddingTop: 60, paddingBottom: Spacing.xl, flex: 1, minHeight: 0 },
+    listWrapper: { flex: 1, minHeight: 0 },
+    list: { flex: 1, minHeight: 0 },
+    headerCard: { padding: Spacing.l, gap: Spacing.m },
+    headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.l },
+    headerTopRowCompact: { flexDirection: 'column', alignItems: 'stretch', gap: Spacing.m },
+    titleBlock: { flex: 1, gap: Spacing.xs },
+    titleBlockCompact: { alignItems: 'flex-start' },
+    subtitleText: { ...Typography.body, color: Colors.light.textSecondary },
     errorText: {
         color: Colors.light.danger,
         fontSize: 14,
@@ -1515,10 +1586,66 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         gap: 24,
         alignItems: 'stretch',
-        marginTop: Spacing.m,
     },
-    controlsLeft: { flex: 1 },
-    controlsRight: { alignItems: 'flex-end', justifyContent: 'space-between' },
+    headerControlsStack: {
+        flexDirection: 'column',
+        gap: Spacing.l,
+    },
+    controlsLeft: { flex: 1, gap: Spacing.m },
+    controlsRight: { alignItems: 'flex-end', justifyContent: 'space-between', gap: Spacing.m },
+    controlsRightCompact: { alignItems: 'stretch' },
+    buttonRow: {
+        flexDirection: 'row',
+        gap: Spacing.s,
+        flexWrap: 'wrap',
+        justifyContent: 'flex-end',
+    },
+    buttonRowWrap: {
+        justifyContent: 'flex-start',
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: BorderRadius.m,
+        ...Shadows.soft,
+    },
+    actionButtonPrimary: { backgroundColor: Colors.light.primary },
+    actionButtonYoutube: { backgroundColor: '#F04438' },
+    actionButtonArticle: { backgroundColor: '#FF8A3D' },
+    actionButtonText: { color: 'white', fontWeight: '700', fontSize: 14 },
+    fabColumn: {
+        position: 'absolute',
+        right: Spacing.l,
+        bottom: Spacing.xl,
+        gap: Spacing.s,
+    },
+    fabButton: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        alignItems: 'center',
+        justifyContent: 'center',
+        ...Shadows.strong,
+    },
+    fabGradient: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    fabLabel: {
+        color: 'white',
+        fontWeight: '800',
+        fontSize: 14,
+        letterSpacing: 0.5,
+    },
+    fabPrimary: { backgroundColor: Colors.light.primary },
+    fabYoutube: { backgroundColor: '#F04438' },
+    fabArticle: { backgroundColor: '#FF8A3D' },
     filterRow: { flexDirection: 'row', justifyContent: 'flex-start' },
     filterChip: {
         paddingHorizontal: 12,
@@ -1549,7 +1676,21 @@ const styles = StyleSheet.create({
     geminiButtonDisabled: { opacity: 0.7 },
 
     // Toggle Styles
-    toggleContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.l, padding: 3 },
+    stickyTabs: {
+        paddingVertical: Spacing.s,
+        paddingHorizontal: Spacing.l,
+        backgroundColor: Colors.light.background,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.light.border,
+        alignItems: 'center',
+    },
+    toggleContainer: {
+        flexDirection: 'row',
+        backgroundColor: Colors.light.secondary,
+        borderRadius: BorderRadius.l,
+        padding: 3,
+        alignSelf: 'center',
+    },
     toggleBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: BorderRadius.m },
     toggleBtnActive: { backgroundColor: Colors.light.background, ...Shadows.soft },
     toggleText: { fontSize: 13, fontWeight: '600', color: Colors.light.textSecondary },
@@ -1558,6 +1699,7 @@ const styles = StyleSheet.create({
     sortRow: { marginTop: Spacing.s },
     sortLabel: { ...Typography.caption, color: Colors.light.textSecondary, marginBottom: 6 },
     sortPills: { flexDirection: 'row', gap: 8 },
+    sortPillsWrap: { flexWrap: 'wrap' },
     sortPill: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: Colors.light.secondary },
     sortPillActive: { backgroundColor: Colors.light.primary },
     sortPillText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary },
@@ -1569,7 +1711,7 @@ const styles = StyleSheet.create({
         borderRadius: BorderRadius.m,
         paddingVertical: 10,
         paddingHorizontal: 12,
-        backgroundColor: Colors.light.background,
+        backgroundColor: Colors.light.card,
         color: Colors.light.text,
     },
 

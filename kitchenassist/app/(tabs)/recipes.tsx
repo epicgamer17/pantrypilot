@@ -19,7 +19,8 @@ import { useApp } from '../../context/AppContext';
 import { Recipe, Ingredient } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
-import { fetchItemPrices } from '../../context/appContext/api';
+import { fetchItemPrices, fetchItemsByIds } from '../../context/appContext/api';
+import { normalizeObjectId } from '../../context/appContext/utils';
 
 type SortOption = 'missing' | 'expiry' | 'cost' | 'sale';
 type ViewMode = 'household' | 'public';
@@ -32,7 +33,18 @@ export default function RecipesScreen() {
     const padding = Spacing.xl;
     const cardWidth = (width - (padding * 2) - (gap * (numColumns - 1))) / numColumns;
 
-    const { recipes: householdRecipes, fridgeItems, groceryList, addRecipe, updateRecipe, addToGroceryList, cookRecipeFromFridge, userId, householdId } = useApp();
+    const {
+        recipes: householdRecipes,
+        fridgeItems,
+        groceryList,
+        addRecipe,
+        updateRecipe,
+        addToGroceryList,
+        addItemsToGroceryList,
+        cookRecipeFromFridge,
+        userId,
+        householdId,
+    } = useApp();
 
     // UI State
     const [viewMode, setViewMode] = useState<ViewMode>('household');
@@ -82,7 +94,38 @@ export default function RecipesScreen() {
             setLoadingPublic(true);
             fetch(`${API_URL}/recipes?publicOnly=true`, { headers: getAuthHeaders() })
                 .then(res => res.json())
-                .then(data => setPublicRecipes(data))
+                .then(async data => {
+                    const normalized = Array.isArray(data)
+                        ? data.map((r: any) => ({ ...r, id: r.id || r._id }))
+                        : [];
+                    const ingredientIds = new Set<string>();
+                    normalized.forEach((recipe: any) => {
+                        (recipe.ingredients || []).forEach((ingredient: any) => {
+                            const resolvedId = normalizeObjectId(ingredient.itemId);
+                            if (resolvedId) {
+                                ingredientIds.add(resolvedId);
+                            }
+                        });
+                    });
+                    const itemsById = ingredientIds.size
+                        ? await fetchItemsByIds(API_URL, getAuthHeaders, userId, Array.from(ingredientIds))
+                        : new Map();
+                    const resolved = normalized.map((recipe: any) => ({
+                        ...recipe,
+                        ingredients: (recipe.ingredients || []).map((ingredient: any) => {
+                            const resolvedId = normalizeObjectId(ingredient.itemId);
+                            const resolvedName =
+                                ingredient.name ||
+                                (resolvedId ? itemsById.get(resolvedId)?.name : undefined);
+                            return {
+                                ...ingredient,
+                                itemId: resolvedId ?? ingredient.itemId,
+                                name: resolvedName ?? ingredient.name,
+                            };
+                        }),
+                    }));
+                    setPublicRecipes(resolved);
+                })
                 .catch(err => console.error('Failed to fetch public recipes', err))
                 .finally(() => setLoadingPublic(false));
         }
@@ -393,7 +436,24 @@ export default function RecipesScreen() {
                                             <Text style={styles.cookButtonText}>Cook</Text>
                                         </TouchableOpacity>
                                     )}
-                                    <TouchableOpacity onPress={() => item.ingredients.forEach(i => addToGroceryList(i.name, 'Recipe', 0))}>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            const items = item.ingredients
+                                                .map((i) => ({
+                                                    name: i.name?.trim() || '',
+                                                    category: 'Recipe',
+                                                    price: 0,
+                                                    fromRecipe: item.name,
+                                                }))
+                                                .filter((i) => i.name);
+                                            if (!items.length) return;
+                                            if (items.length === 1) {
+                                                addToGroceryList(items[0].name, items[0].category, items[0].price, items[0].fromRecipe);
+                                                return;
+                                            }
+                                            addItemsToGroceryList(items);
+                                        }}
+                                    >
                                         <Text style={{ fontSize: 10, color: Colors.light.tint }}>+ List</Text>
                                     </TouchableOpacity>
                                 </View>

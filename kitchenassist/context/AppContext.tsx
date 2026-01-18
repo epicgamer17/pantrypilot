@@ -229,7 +229,37 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             );
             if (recipesRes.ok) {
                 const data = await recipesRes.json();
-                setRecipes(data.map((r: any) => ({ ...r, id: r.id || r._id })));
+                const normalizedRecipes = data.map((r: any) => ({
+                    ...r,
+                    id: r.id || r._id,
+                }));
+                const ingredientIds = new Set<string>();
+                normalizedRecipes.forEach((recipe: any) => {
+                    (recipe.ingredients || []).forEach((ingredient: any) => {
+                        const resolvedId = normalizeObjectId(ingredient.itemId);
+                        if (resolvedId) {
+                            ingredientIds.add(resolvedId);
+                        }
+                    });
+                });
+                const itemsById = ingredientIds.size
+                    ? await fetchItemsByIds(Array.from(ingredientIds))
+                    : new Map();
+                const resolvedRecipes = normalizedRecipes.map((recipe: any) => ({
+                    ...recipe,
+                    ingredients: (recipe.ingredients || []).map((ingredient: any) => {
+                        const resolvedId = normalizeObjectId(ingredient.itemId);
+                        const resolvedName =
+                            ingredient.name ||
+                            (resolvedId ? itemsById.get(resolvedId)?.name : undefined);
+                        return {
+                            ...ingredient,
+                            itemId: resolvedId ?? ingredient.itemId,
+                            name: resolvedName ?? ingredient.name,
+                        };
+                    }),
+                }));
+                setRecipes(resolvedRecipes);
             } else {
                 console.error('Failed to fetch recipes');
             }

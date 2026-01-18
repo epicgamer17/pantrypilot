@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const restore = async () => {
             // Reset persisted state on every app start.
-            await AsyncStorage.clear();
+            // await AsyncStorage.clear();
 
             try {
                 const [token, storedUserId, storedHasHousehold] = await AsyncStorage.multiGet([

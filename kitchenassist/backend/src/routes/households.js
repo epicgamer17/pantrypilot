@@ -708,6 +708,7 @@ router.post('/households/:householdId/fridge-items', async (req, res) => {
     quantity,
     unit,
     location,
+    purchasePrice,
     purchaseDate,
     expirationDate,
     isOpen,
@@ -750,15 +751,48 @@ router.post('/households/:householdId/fridge-items', async (req, res) => {
       });
   }
 
+  const resolvedItemId = ObjectId.isValid(itemId) ? new ObjectId(itemId) : null;
+  if (!resolvedItemId) {
+    return res.status(400).json({ error: 'Invalid itemId.' });
+  }
+
+  let resolvedPurchasePrice =
+    purchasePrice !== undefined ? Number(purchasePrice) : undefined;
+  if (resolvedPurchasePrice === undefined) {
+    const [priceDoc] = await db
+      .collection('storeInventory')
+      .aggregate([
+        { $match: { itemId: resolvedItemId } },
+        {
+          $addFields: {
+            effectivePrice: {
+              $cond: [
+                { $ifNull: ['$onSale', false] },
+                { $ifNull: ['$salePrice', '$price'] },
+                '$price',
+              ],
+            },
+          },
+        },
+        { $sort: { effectivePrice: 1 } },
+        { $limit: 1 },
+        { $project: { _id: 0, effectivePrice: 1 } },
+      ])
+      .toArray();
+    if (priceDoc?.effectivePrice !== undefined) {
+      resolvedPurchasePrice = Number(priceDoc.effectivePrice);
+    }
+  }
+
   const fridgeItemId = new ObjectId();
   const fridgeItem = omitUndefined({
     _id: fridgeItemId,
-    itemId: new ObjectId(itemId),
+    itemId: resolvedItemId,
     quantity: Number(quantity),
     unit,
     location,
     purchasePrice:
-      purchasePrice !== undefined ? Number(purchasePrice) : undefined,
+      resolvedPurchasePrice !== undefined ? resolvedPurchasePrice : undefined,
     purchaseDate: new Date(purchaseDate),
     expirationDate: expirationDate ? new Date(expirationDate) : undefined,
     isOpen,

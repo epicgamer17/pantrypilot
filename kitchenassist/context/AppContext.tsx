@@ -322,8 +322,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             } else {
                 console.error('Failed to fetch household info');
             }
-
-            setPurchaseHistory([]);
         } catch (error) {
             console.error('[AppContext] Error refreshing data:', error);
         }
@@ -353,6 +351,41 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setGroceryList([]);
         setRecipes([]);
     }, [userId, householdId]);
+
+    useEffect(() => {
+        const history: PurchaseRecord[] = [];
+
+        const mapToRecord = (item: Item): PurchaseRecord => ({
+            id: item.id,
+            name: item.name,
+            category: item.category,
+            price: item.purchasePrice || 0,
+            date: item.purchaseDate,
+            store: item.store || 'Store',
+            quantity: item.quantity,
+            unit: item.unit
+        });
+
+        // 1. Add Active Fridge Items (Current Inventory)
+        fridgeItems.forEach(item => {
+            // Only add if it has a price, otherwise it skews analytics
+            if (item.purchasePrice) {
+                history.push(mapToRecord(item));
+            }
+        });
+
+        // 2. Add Recently Depleted Items (History)
+        recentlyDepletedItems.forEach(item => {
+            if (item.purchasePrice) {
+                history.push(mapToRecord(item));
+            }
+        });
+
+        // Sort by date (Newest first)
+        history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        setPurchaseHistory(history);
+    }, [fridgeItems, recentlyDepletedItems]);
 
     // -------------------------------------------------------------------------
     // 2. FRIDGE ACTIONS
@@ -422,9 +455,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // -------------------------------------------------------------------------
 
     const calculateTotalWasteCost = () => {
-        return 0;
-    };
+        return recentlyDepletedItems.reduce((total, item) => {
+            const wastedPercent = item.percentWasted || 0;
+            const price = item.purchasePrice || 0;
 
+            // Calculate money lost on this specific item
+            const moneyLost = price * (wastedPercent / 100);
+            return total + moneyLost;
+        }, 0);
+    };
     return (
         <AppContext.Provider
             value={{

@@ -13,16 +13,17 @@ import {
     Platform,
     useWindowDimensions,
     ActivityIndicator,
-    Switch
+    Switch,
+    Linking
 } from 'react-native';
 import { useApp } from '../../context/AppContext';
 import { Recipe, Ingredient } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
-import { fetchItemPrices, fetchItemsByIds } from '../../context/appContext/api';
+import { fetchItemPrices, fetchItemsByIds, ensureItemByName } from '../../context/appContext/api';
 import { normalizeObjectId } from '../../context/appContext/utils';
 
-type SortOption = 'missing' | 'expiry' | 'cost' | 'sale';
+type SortOption = 'missing' | 'expiry' | 'cost' | 'az';
 type ViewMode = 'household' | 'public';
 
 export default function RecipesScreen() {
@@ -50,10 +51,13 @@ export default function RecipesScreen() {
     const [viewMode, setViewMode] = useState<ViewMode>('household');
     const [modalVisible, setModalVisible] = useState(false);
     const [sortBy, setSortBy] = useState<SortOption>('missing');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Cook Modal State
     const [cookModalVisible, setCookModalVisible] = useState(false);
     const [recipeToCook, setRecipeToCook] = useState<Recipe | null>(null);
+    const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+    const [recipeToView, setRecipeToView] = useState<Recipe | null>(null);
 
     // Data State
     const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
@@ -263,11 +267,118 @@ export default function RecipesScreen() {
         return { missingCount, minDaysToExpiry, totalCost };
     };
 
-    const getSortedRecipes = () => activeRecipes.map(r => ({ ...r, meta: getRecipeMetadata(r) }));
+    const resolveIngredientSource = (ingredient: Ingredient) => {
+        const inFridge = fridgeItems.find(item =>
+            (ingredient.itemId && item.itemId && item.itemId === ingredient.itemId) ||
+            (item.name && ingredient.name && item.name.toLowerCase() === ingredient.name.toLowerCase())
+        );
+        if (inFridge) return 'Fridge';
+        const onList = groceryList.find(item =>
+            (ingredient.itemId && item.itemId && item.itemId === ingredient.itemId) ||
+            (item.name && ingredient.name && item.name.toLowerCase() === ingredient.name.toLowerCase())
+        );
+        if (onList) return 'Grocery list';
+        return 'Missing';
+    };
+
+    const groupIngredientsBySource = (ingredients: Ingredient[]) => {
+        const groups = {
+            fridge: [] as Ingredient[],
+            list: [] as Ingredient[],
+            missing: [] as Ingredient[],
+        };
+        ingredients.forEach((ingredient) => {
+            const source = resolveIngredientSource(ingredient);
+            if (source === 'Fridge') {
+                groups.fridge.push(ingredient);
+                return;
+            }
+            if (source === 'Grocery list') {
+                groups.list.push(ingredient);
+                return;
+            }
+            groups.missing.push(ingredient);
+        });
+        return groups;
+    };
+
+    const getSortedRecipes = () => {
+        const normalizedQuery = searchQuery.trim().toLowerCase();
+        const filtered = normalizedQuery
+            ? activeRecipes.filter((recipe) => {
+                const nameMatch = recipe.name?.toLowerCase().includes(normalizedQuery);
+                const ingredientMatch = recipe.ingredients?.some((ing) =>
+                    ing.name?.toLowerCase().includes(normalizedQuery),
+                );
+                return nameMatch || ingredientMatch;
+            })
+            : activeRecipes;
+        const withMeta = filtered.map(r => ({ ...r, meta: getRecipeMetadata(r) }));
+        const sorted = [...withMeta].sort((a, b) => {
+            if (sortBy === 'az') {
+                return a.name.localeCompare(b.name);
+            }
+            if (sortBy === 'cost') {
+                return (a.meta.totalCost - b.meta.totalCost) || a.name.localeCompare(b.name);
+            }
+            if (sortBy === 'expiry') {
+                return (a.meta.minDaysToExpiry - b.meta.minDaysToExpiry) || a.name.localeCompare(b.name);
+            }
+            return (a.meta.missingCount - b.meta.missingCount) || a.name.localeCompare(b.name);
+        });
+        return sorted;
+    };
 
     const handleCookPress = (recipe: Recipe) => {
         setRecipeToCook(recipe);
         setCookModalVisible(true);
+    };
+
+    const handleAddPublicRecipe = async (recipe: Recipe) => {
+        if (!householdId) {
+            Alert.alert('Household required', 'Create or join a household to save recipes.');
+            return;
+        }
+        const resolvedIngredients = await Promise.all(
+            recipe.ingredients.map(async (ingredient) => {
+                if (ingredient.itemId) {
+                    return ingredient;
+                }
+                if (!ingredient.name) {
+                    return null;
+                }
+                const resolved = await ensureItemByName(
+                    API_URL,
+                    getAuthHeaders,
+                    userId,
+                    ingredient.name,
+                    'Recipe',
+                );
+                if (!resolved?.id) {
+                    return null;
+                }
+                return {
+                    ...ingredient,
+                    itemId: resolved.id,
+                    name: resolved.name ?? ingredient.name,
+                };
+            }),
+        );
+        if (resolvedIngredients.some((ingredient) => !ingredient)) {
+            Alert.alert(
+                'Missing items',
+                'Some ingredients could not be matched to items.',
+            );
+            return;
+        }
+        await addRecipe({
+            ...recipe,
+            id: '',
+            isPublic: false,
+            ingredients: resolvedIngredients as Ingredient[],
+        });
+        setViewMode('household');
+        Alert.alert('Saved', 'Recipe added to My Recipes.');
     };
 
     const handleEditPress = (recipe: Recipe) => {
@@ -379,6 +490,55 @@ export default function RecipesScreen() {
                         <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
                     </TouchableOpacity>
                 )}
+
+                {/* Row 3: Sort Controls */}
+                <View style={styles.sortRow}>
+                    <Text style={styles.sortLabel}>Sort by</Text>
+                    <View style={styles.sortPills}>
+                        <TouchableOpacity
+                            style={[styles.sortPill, sortBy === 'cost' && styles.sortPillActive]}
+                            onPress={() => setSortBy('cost')}
+                        >
+                            <Text style={[styles.sortPillText, sortBy === 'cost' && styles.sortPillTextActive]}>
+                                Price
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.sortPill, sortBy === 'expiry' && styles.sortPillActive]}
+                            onPress={() => setSortBy('expiry')}
+                        >
+                            <Text style={[styles.sortPillText, sortBy === 'expiry' && styles.sortPillTextActive]}>
+                                Expiry
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.sortPill, sortBy === 'missing' && styles.sortPillActive]}
+                            onPress={() => setSortBy('missing')}
+                        >
+                            <Text style={[styles.sortPillText, sortBy === 'missing' && styles.sortPillTextActive]}>
+                                Missing
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.sortPill, sortBy === 'az' && styles.sortPillActive]}
+                            onPress={() => setSortBy('az')}
+                        >
+                            <Text style={[styles.sortPillText, sortBy === 'az' && styles.sortPillTextActive]}>
+                                A-Z
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <View style={styles.searchRow}>
+                    <TextInput
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholder="Search recipes or ingredients"
+                        placeholderTextColor={Colors.light.textMuted}
+                        style={styles.searchInput}
+                    />
+                </View>
             </View>
 
             {loadingPublic && viewMode === 'public' ? (
@@ -412,7 +572,10 @@ export default function RecipesScreen() {
                             >
                                 <TouchableOpacity
                                     style={{ flex: 1 }}
-                                    onPress={() => handleEditPress(item)}
+                                    onPress={() => {
+                                        setRecipeToView(item);
+                                        setDetailsModalVisible(true);
+                                    }}
                                     activeOpacity={0.7}
                                 >
                                     <View>
@@ -431,6 +594,16 @@ export default function RecipesScreen() {
                                 </TouchableOpacity>
 
                                 <View style={{ alignItems: 'flex-end', gap: 5 }}>
+                                    {viewMode === 'household' && (
+                                        <TouchableOpacity onPress={() => handleEditPress(item)}>
+                                            <Text style={{ fontSize: 10, color: Colors.light.textSecondary }}>Edit</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                    {viewMode === 'public' && (
+                                        <TouchableOpacity onPress={() => handleAddPublicRecipe(item)}>
+                                            <Text style={{ fontSize: 10, color: Colors.light.textSecondary }}>Add</Text>
+                                        </TouchableOpacity>
+                                    )}
                                     {isReady && (
                                         <TouchableOpacity style={styles.cookButton} onPress={() => handleCookPress(item)}>
                                             <Text style={styles.cookButtonText}>Cook</Text>
@@ -444,13 +617,11 @@ export default function RecipesScreen() {
                                                     category: 'Recipe',
                                                     price: 0,
                                                     fromRecipe: item.name,
+                                                    unit: i.unit,
+                                                    quantity: i.quantity,
                                                 }))
                                                 .filter((i) => i.name);
                                             if (!items.length) return;
-                                            if (items.length === 1) {
-                                                addToGroceryList(items[0].name, items[0].category, items[0].price, items[0].fromRecipe);
-                                                return;
-                                            }
                                             addItemsToGroceryList(items);
                                         }}
                                     >
@@ -613,6 +784,64 @@ export default function RecipesScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Modal for Recipe Details */}
+            <Modal visible={detailsModalVisible} transparent animationType="fade">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.createItemCard}>
+                        <Text style={Typography.subHeader}>{recipeToView?.name}</Text>
+                        {recipeToView?.sourceUrl ? (
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    try {
+                                        await Linking.openURL(recipeToView.sourceUrl as string);
+                                    } catch (error) {
+                                        return;
+                                    }
+                                }}
+                            >
+                                <Text style={{ color: Colors.light.tint, marginTop: 6 }}>
+                                    View full recipe
+                                </Text>
+                            </TouchableOpacity>
+                        ) : null}
+                        <Text style={[Typography.label, { marginTop: 16 }]}>Ingredients</Text>
+                        <ScrollView style={{ maxHeight: 240, marginTop: 8 }}>
+                            {(() => {
+                                const ingredients = recipeToView?.ingredients || [];
+                                const groups = groupIngredientsBySource(ingredients);
+                                const renderGroup = (title: string, items: Ingredient[]) => {
+                                    if (!items.length) return null;
+                                    return (
+                                        <View style={{ marginBottom: 12 }}>
+                                            <Text style={Typography.caption}>{title}</Text>
+                                            {items.map((ingredient, index) => (
+                                                <View key={`${title}-${ingredient.name}-${index}`} style={styles.ingItemRow}>
+                                                    <Text style={styles.ingItemText}>
+                                                        • {ingredient.quantity} {ingredient.unit} {ingredient.name}
+                                                    </Text>
+                                                </View>
+                                            ))}
+                                        </View>
+                                    );
+                                };
+                                return (
+                                    <View>
+                                        {renderGroup('In fridge', groups.fridge)}
+                                        {renderGroup('On grocery list', groups.list)}
+                                        {renderGroup('Missing', groups.missing)}
+                                    </View>
+                                );
+                            })()}
+                        </ScrollView>
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={styles.cancelBtn}>
+                                <Text style={styles.cancelText}>Close</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -648,6 +877,24 @@ const styles = StyleSheet.create({
     toggleBtnActive: { backgroundColor: Colors.light.background, ...Shadows.soft },
     toggleText: { fontSize: 13, fontWeight: '600', color: Colors.light.textSecondary },
     toggleTextActive: { color: Colors.light.text },
+
+    sortRow: { marginTop: Spacing.s },
+    sortLabel: { ...Typography.caption, color: Colors.light.textSecondary, marginBottom: 6 },
+    sortPills: { flexDirection: 'row', gap: 8 },
+    sortPill: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999, backgroundColor: Colors.light.secondary },
+    sortPillActive: { backgroundColor: Colors.light.primary },
+    sortPillText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary },
+    sortPillTextActive: { color: 'white' },
+    searchRow: { marginTop: Spacing.s },
+    searchInput: {
+        borderWidth: 1,
+        borderColor: Colors.light.border,
+        borderRadius: BorderRadius.m,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        backgroundColor: Colors.light.background,
+        color: Colors.light.text,
+    },
 
     emptyText: { textAlign: 'center', marginTop: 40, color: Colors.light.textSecondary, fontSize: 16 },
 

@@ -16,6 +16,7 @@ export default function FridgeScreen() {
 
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<'expiry' | 'az' | 'category'>('expiry');
 
   // Consume Modal State
   const [consumeModalVisible, setConsumeModalVisible] = useState(false);
@@ -37,8 +38,18 @@ export default function FridgeScreen() {
     if (searchQuery) {
       items = items.filter(i => i.name.toLowerCase().includes(searchQuery.toLowerCase()));
     }
+    if (sortMode === 'az') {
+      return items.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    if (sortMode === 'category') {
+      return items.sort((a, b) => {
+        const categoryCompare = a.category.localeCompare(b.category);
+        if (categoryCompare !== 0) return categoryCompare;
+        return a.name.localeCompare(b.name);
+      });
+    }
     return items.sort((a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime());
-  }, [fridgeItems, searchQuery]);
+  }, [fridgeItems, searchQuery, sortMode]);
 
   const renderRightActions = (item: Item, close: () => void) => (
     <TouchableOpacity
@@ -75,11 +86,21 @@ export default function FridgeScreen() {
   };
 
   const renderCardContent = (item: Item) => {
-    const daysLeft = Math.ceil((new Date(item.expiryDate).getTime() - Date.now()) / (1000 * 3600 * 24));
-    const isExpired = daysLeft < 0;
-    const isExpiringSoon = daysLeft >= 0 && daysLeft <= 3;
-    const timeProgress = Math.max(0, Math.min(1, daysLeft / 14));
-    const timeColor = isExpired ? Colors.light.danger : isExpiringSoon ? Colors.light.warning : Colors.light.success;
+    const expiryTime = item.expiryDate ? new Date(item.expiryDate).getTime() : NaN;
+    const hasExpiry = Number.isFinite(expiryTime);
+    const daysLeft = hasExpiry
+      ? Math.ceil((expiryTime - Date.now()) / (1000 * 3600 * 24))
+      : null;
+    const isExpired = daysLeft !== null && daysLeft < 0;
+    const isExpiringSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 3;
+    const timeProgress = daysLeft === null ? 0 : Math.max(0, Math.min(1, daysLeft / 14));
+    const timeColor = daysLeft === null
+      ? Colors.light.textSecondary
+      : isExpired
+        ? Colors.light.danger
+        : isExpiringSoon
+          ? Colors.light.warning
+          : Colors.light.success;
     const initial = item.initialQuantity || item.quantity;
     const qtyProgress = Math.max(0, Math.min(1, item.quantity / initial));
     const qtyColor = Colors.light.tint;
@@ -94,7 +115,7 @@ export default function FridgeScreen() {
           </View>
           <View style={{ alignItems: 'flex-end', flex: 1 }}>
             <Text style={[styles.daysText, { color: timeColor }]}>
-              {isExpired ? 'Expired' : `${daysLeft} days`}
+              {daysLeft === null ? 'No expiry' : isExpired ? 'Expired' : `${daysLeft} days`}
             </Text>
             <View style={styles.progressBarBg}>
               <View style={[styles.progressBarFill, { width: `${timeProgress * 100}%`, backgroundColor: timeColor }]} />
@@ -103,6 +124,7 @@ export default function FridgeScreen() {
         </View>
         <View style={styles.cardBody}>
           <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.categoryText}>{item.category}</Text>
           {item.purchasePrice > 0 ? (
             <Text style={styles.priceText}>${item.purchasePrice.toFixed(2)}</Text>
           ) : (
@@ -140,6 +162,27 @@ export default function FridgeScreen() {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
+        </View>
+
+        <View style={styles.sortContainer}>
+          <TouchableOpacity
+            style={[styles.sortBtn, sortMode === 'expiry' && styles.sortBtnActive]}
+            onPress={() => setSortMode('expiry')}
+          >
+            <Text style={[styles.sortBtnText, sortMode === 'expiry' && styles.sortBtnTextActive]}>By Expiry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
+            onPress={() => setSortMode('az')}
+          >
+            <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortBtn, sortMode === 'category' && styles.sortBtnActive]}
+            onPress={() => setSortMode('category')}
+          >
+            <Text style={[styles.sortBtnText, sortMode === 'category' && styles.sortBtnTextActive]}>Category</Text>
+          </TouchableOpacity>
         </View>
 
         <FlatList
@@ -236,8 +279,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: Spacing.l, paddingTop: 60, backgroundColor: Colors.light.background },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.l },
   addButton: { width: 44, height: 44, borderRadius: BorderRadius.circle, backgroundColor: Colors.light.primary, justifyContent: 'center', alignItems: 'center', ...Shadows.default },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.card, paddingHorizontal: Spacing.m, paddingVertical: 12, borderRadius: BorderRadius.l, marginBottom: Spacing.l, ...Shadows.soft },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.light.background, paddingVertical: 10, paddingHorizontal: 12, borderRadius: BorderRadius.m, marginBottom: Spacing.l, borderWidth: 1, borderColor: Colors.light.border },
   searchInput: { flex: 1, fontSize: 16, color: Colors.light.text },
+  sortContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.m, padding: 4, marginBottom: Spacing.m },
+  sortBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: BorderRadius.s },
+  sortBtnActive: { backgroundColor: Colors.light.card, ...Shadows.soft },
+  sortBtnText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 13 },
+  sortBtnTextActive: { color: Colors.light.text },
   cardLayoutOverrides: {
     padding: Spacing.m,
     minHeight: 160,
@@ -248,6 +296,7 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1, justifyContent: 'flex-end' },
   iconContainer: { width: 40, height: 40, borderRadius: BorderRadius.m, backgroundColor: Colors.light.background, justifyContent: 'center', alignItems: 'center' },
   categoryEmoji: { fontSize: 20 },
+  categoryText: { ...Typography.caption, color: Colors.light.textSecondary, marginBottom: Spacing.xs },
   itemName: { fontSize: 16, fontWeight: '600', color: Colors.light.text, marginBottom: Spacing.xs },
   priceText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary, marginBottom: Spacing.xs },
   estimateMissing: { fontSize: 12, color: Colors.light.textMuted, marginBottom: Spacing.xs },

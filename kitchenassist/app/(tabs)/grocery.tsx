@@ -1,24 +1,33 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensions, ScrollView, Modal } from 'react-native';
-import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensions, Modal, TextInput } from 'react-native';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
 import { Card } from '../../components/ui/Card'; // Import the Card component
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
 import ItemNameAutocomplete from '../../components/ItemNameAutocomplete';
+import { Category, Item } from '../../types';
 
-type SortMode = 'aisle' | 'recipe';
+type SortMode = 'aisle' | 'recipe' | 'az';
 
 export default function GroceryScreen() {
   const { width } = useWindowDimensions();
-  const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, clearPurchasedItems, fridgeItems, recipes, recentlyDepletedItems } = useApp();
+  const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems } = useApp();
   const [sortMode, setSortMode] = useState<SortMode>('aisle');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('Other');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [moveModalVisible, setMoveModalVisible] = useState(false);
+  const [selectedPurchasedIds, setSelectedPurchasedIds] = useState<Set<string>>(new Set());
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editQuantity, setEditQuantity] = useState('');
+  const [editUnit, setEditUnit] = useState<Item['unit']>('unit');
 
   const CATEGORY_OPTIONS = ['Produce', 'Dairy', 'Meat', 'Pantry', 'Frozen', 'Beverages', 'Other'];
+  const ALLOWED_UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup'];
 
   // --- QUICK ADD LOGIC ---
 
@@ -56,7 +65,9 @@ export default function GroceryScreen() {
     groceryList.forEach(item => {
       let key = 'Other';
 
-      if (sortMode === 'aisle') {
+      if (sortMode === 'az') {
+        key = 'A-Z';
+      } else if (sortMode === 'aisle') {
         key = item.aisle || 'Other';
       } else {
         key = item.fromRecipe || 'Manual / Other';
@@ -68,7 +79,7 @@ export default function GroceryScreen() {
 
     return Object.keys(grouped).sort().map(title => ({
       title: title,
-      data: grouped[title]
+      data: grouped[title].sort((a, b) => a.name.localeCompare(b.name))
     }));
   }, [groceryList, sortMode]);
 
@@ -84,15 +95,102 @@ export default function GroceryScreen() {
     () => groceryList.some((item) => item.checked),
     [groceryList],
   );
-
-  const renderDeleteAction = (id: string) => (
-    <TouchableOpacity
-      style={styles.deleteAction}
-      onPress={() => toggleGroceryItem(id)}
-    >
-      <MaterialCommunityIcons name="delete-outline" size={24} color="white" />
-    </TouchableOpacity>
+  const purchasedItems = useMemo(
+    () => groceryList.filter((item) => item.checked),
+    [groceryList],
   );
+
+  const toFridgeItem = (item: any): Omit<Item, 'initialQuantity'> => {
+    const unit = ALLOWED_UNITS.includes(item.unit) ? item.unit : 'unit';
+    const category =
+      CATEGORY_OPTIONS.includes(item.aisle) ? (item.aisle as Category) : 'Other';
+    return {
+      id: item.itemId ?? item.id,
+      name: item.name,
+      category,
+      quantity: item.quantity ?? 1,
+      unit,
+      purchasePrice: item.targetPrice ?? 0,
+      purchaseDate: new Date().toISOString(),
+      expiryDate: '',
+      store: item.fromRecipe ? `Recipe: ${item.fromRecipe}` : 'Grocery',
+      location: 'pantry',
+      isUsed: false,
+    };
+  };
+
+  const handleClearPurchased = () => {
+    if (!purchasedItems.length) {
+      clearPurchasedItems();
+      return;
+    }
+    setSelectedPurchasedIds(new Set(purchasedItems.map((item) => item.id)));
+    setMoveModalVisible(true);
+  };
+
+  const togglePurchasedSelection = (id: string) => {
+    setSelectedPurchasedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleMoveSelectedToFridge = async () => {
+    const selectedItems = purchasedItems.filter((item) =>
+      selectedPurchasedIds.has(item.id),
+    );
+    if (selectedItems.length) {
+      const itemsToAdd = selectedItems.map(toFridgeItem);
+      await addItemsToFridge(itemsToAdd);
+    }
+    clearPurchasedItems();
+    setMoveModalVisible(false);
+  };
+
+  const formatUnit = (unit: string | undefined, quantity: number) => {
+    if (!unit || unit === 'ea') return '';
+    const noPluralUnits = new Set(['g', 'kg', 'ml', 'L', 'oz', 'tbsp', 'tsp']);
+    if (quantity === 1 || noPluralUnits.has(unit)) {
+      return unit;
+    }
+    if (unit === 'lb') {
+      return 'lbs';
+    }
+    return `${unit}s`;
+  };
+
+  const handleRemoveAllPurchased = () => {
+    setSelectedPurchasedIds(new Set());
+  };
+
+  const openEditModal = (item: any) => {
+    setEditingItem(item);
+    setEditName(item.name ?? '');
+    setEditQuantity(String(item.quantity ?? 1));
+    const unit = ALLOWED_UNITS.includes(item.unit) ? item.unit : 'unit';
+    setEditUnit(unit);
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingItem) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) return;
+    const qty = Number(editQuantity);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    updateGroceryItem(editingItem.id, {
+      name: trimmedName,
+      quantity: qty,
+      unit: editUnit,
+      aisle: editingItem.aisle,
+    });
+    setEditModalVisible(false);
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -112,6 +210,8 @@ export default function GroceryScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.quickAddScroll}
+              nestedScrollEnabled
+              directionalLockEnabled
             >
               {/* 1. Recents */}
               {recentItems.map(item => (
@@ -149,6 +249,8 @@ export default function GroceryScreen() {
                         category: undefined,
                         price: 0,
                         fromRecipe: recipe.name,
+                        unit: ing.unit,
+                        quantity: ing.quantity,
                       }))
                     );
                   }}
@@ -174,10 +276,16 @@ export default function GroceryScreen() {
             >
               <Text style={[styles.sortBtnText, sortMode === 'recipe' && styles.sortBtnTextActive]}>By Recipe</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortBtn, sortMode === 'az' && styles.sortBtnActive]}
+              onPress={() => setSortMode('az')}
+            >
+              <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
+            </TouchableOpacity>
           </View>
           {hasCheckedItems && (
             <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.clearButton} onPress={clearPurchasedItems}>
+              <TouchableOpacity style={styles.clearButton} onPress={handleClearPurchased}>
                 <Text style={styles.clearButtonText}>Clear purchased</Text>
               </TouchableOpacity>
             </View>
@@ -199,35 +307,43 @@ export default function GroceryScreen() {
               <Text style={styles.sectionHeader}>{title}</Text>
             )}
             renderItem={({ item }) => (
-              <Swipeable
-                renderRightActions={() => renderDeleteAction(item.id)}
-                // Apply margin to the container so Swipe actions line up nicely
-                containerStyle={{ marginBottom: Spacing.s }}
+              <Card
+                variant="elevated"
+                onPress={() => toggleGroceryItem(item.id)}
+                style={styles.cardOverrides}
               >
-                <Card
-                  variant="elevated"
-                  onPress={() => toggleGroceryItem(item.id)}
-                  // Override defaults: Row layout for list, remove margin (handled by Swipeable)
-                  style={styles.cardOverrides}
+                <MaterialCommunityIcons
+                  name={item.checked ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
+                  size={24}
+                  color={item.checked ? Colors.light.success : Colors.light.border}
+                />
+                <View style={{ flex: 1, marginLeft: Spacing.m }}>
+                  <Text style={[styles.itemName, item.checked && styles.itemChecked]}>
+                    {item.quantity ?? 1}
+                    {formatUnit(item.unit, item.quantity ?? 1)
+                      ? ` ${formatUnit(item.unit, item.quantity ?? 1)}`
+                      : ''}{' '}
+                    {item.name?.toLowerCase()}
+                    {item.bestStoreItemName && item.bestStoreItemName !== item.name
+                      ? ` (${item.bestStoreItemName.toLowerCase()})`
+                      : ''}
+                  </Text>
+                  {item.targetPrice > 0 && (
+                    <Text style={Typography.caption}>
+                      ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
+                    </Text>
+                  )}
+                  {item.targetPrice === 0 && (
+                    <Text style={styles.estimateMissing}>No estimate</Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => openEditModal(item)}
                 >
-                  <MaterialCommunityIcons
-                    name={item.checked ? "checkbox-marked-circle" : "checkbox-blank-circle-outline"}
-                    size={24}
-                    color={item.checked ? Colors.light.success : Colors.light.border}
-                  />
-                  <View style={{ flex: 1, marginLeft: Spacing.m }}>
-                    <Text style={[styles.itemName, item.checked && styles.itemChecked]}>{item.name}</Text>
-                    {item.targetPrice > 0 && (
-                      <Text style={Typography.caption}>
-                        ${item.targetPrice.toFixed(2)} {item.quantity ? `x ${item.quantity}` : ''}
-                      </Text>
-                    )}
-                    {item.targetPrice === 0 && (
-                      <Text style={styles.estimateMissing}>No estimate</Text>
-                    )}
-                  </View>
-                </Card>
-              </Swipeable>
+                  <MaterialCommunityIcons name="pencil" size={18} color={Colors.light.textSecondary} />
+                </TouchableOpacity>
+              </Card>
             )}
             ListFooterComponent={
               estimatedTotal > 0 ? (
@@ -240,6 +356,120 @@ export default function GroceryScreen() {
           />
         </View>
       </View>
+
+      <Modal visible={moveModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Move purchased items?</Text>
+            <Text style={Typography.caption}>
+              Selected items move to your pantry. Unselected items are removed.
+            </Text>
+
+            <View style={styles.selectionActions}>
+              <TouchableOpacity
+                style={styles.selectBtn}
+                onPress={() =>
+                  setSelectedPurchasedIds(new Set(purchasedItems.map((item) => item.id)))
+                }
+              >
+                <Text style={styles.selectBtnText}>Select all</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.removeAllBtn}
+                onPress={handleRemoveAllPurchased}
+              >
+                <Text style={styles.removeAllBtnText}>Remove all</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 240, marginTop: Spacing.m }}>
+              {purchasedItems.map((item) => {
+                const selected = selectedPurchasedIds.has(item.id);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.selectRow}
+                    onPress={() => togglePurchasedSelection(item.id)}
+                  >
+                    <MaterialCommunityIcons
+                      name={selected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                      size={22}
+                      color={selected ? Colors.light.success : Colors.light.border}
+                    />
+                    <Text style={styles.selectRowText}>{item.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setMoveModalVisible(false)}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.saveBtn,
+                ]}
+                onPress={handleMoveSelectedToFridge}
+              >
+                <Text style={styles.saveText}>Move to pantry</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={editModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit item</Text>
+            <Text style={Typography.label}>Item name</Text>
+            <TextInput
+              value={editName}
+              onChangeText={setEditName}
+              style={styles.input}
+              placeholder="Item name"
+            />
+            <Text style={Typography.label}>Quantity</Text>
+            <TextInput
+              value={editQuantity}
+              onChangeText={setEditQuantity}
+              style={styles.input}
+              keyboardType="numeric"
+              placeholder="Quantity"
+            />
+            <Text style={Typography.label}>Unit</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitRow}>
+              {ALLOWED_UNITS.map((unit) => (
+                <TouchableOpacity
+                  key={unit}
+                  style={[styles.unitChip, editUnit === unit && styles.unitChipActive]}
+                  onPress={() => setEditUnit(unit)}
+                >
+                  <Text style={[styles.unitChipText, editUnit === unit && styles.unitChipTextActive]}>{unit}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleSaveEdit}
+              >
+                <Text style={styles.saveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={showAddModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -394,16 +624,23 @@ const styles = StyleSheet.create({
   saveBtn: { flex: 1, paddingVertical: 12, borderRadius: BorderRadius.s, backgroundColor: Colors.light.primary, alignItems: 'center' },
   cancelText: { fontWeight: '600', color: Colors.light.textSecondary },
   saveText: { fontWeight: '600', color: 'white' },
+  unitRow: { marginTop: 8, marginBottom: 12 },
+  unitChip: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: BorderRadius.s, backgroundColor: Colors.light.secondary, marginRight: 8 },
+  unitChipActive: { backgroundColor: Colors.light.primary },
+  unitChipText: { fontSize: 12, color: Colors.light.textSecondary, fontWeight: '600' },
+  unitChipTextActive: { color: 'white' },
+  selectionActions: { flexDirection: 'row', gap: 8, marginTop: Spacing.m },
+  selectBtn: { flex: 1, paddingVertical: 8, borderRadius: BorderRadius.s, backgroundColor: Colors.light.secondary, alignItems: 'center' },
+  selectBtnText: { fontWeight: '600', color: Colors.light.textSecondary, fontSize: 12 },
+  removeAllBtn: { flex: 1, paddingVertical: 8, borderRadius: BorderRadius.s, backgroundColor: Colors.light.dangerBg, alignItems: 'center' },
+  removeAllBtnText: { fontWeight: '600', color: Colors.light.danger, fontSize: 12 },
+  selectRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  selectRowText: { fontSize: 14, color: Colors.light.text },
 
-  // Adjusted for Swipeable + Card
-  deleteAction: {
-    backgroundColor: Colors.light.danger,
-    width: 70,
-    height: '100%', // Match Card height
-    borderRadius: BorderRadius.l, // Match Card Radius
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: Spacing.s
+  editButton: {
+    padding: 8,
+    borderRadius: BorderRadius.s,
+    backgroundColor: Colors.light.secondary,
   },
 
   emptyState: { alignItems: 'center', marginTop: 50 },

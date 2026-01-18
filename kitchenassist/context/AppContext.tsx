@@ -12,7 +12,9 @@ import { useAuth } from './AuthContext';
 import {
     ensureItemByName as ensureItemByNameApi,
     fetchClosestPrice as fetchClosestPriceApi,
+    fetchClosestPriceWithStore as fetchClosestPriceWithStoreApi,
     fetchItemPrices as fetchItemPricesApi,
+    fetchItemPriceLeaders as fetchItemPriceLeadersApi,
     fetchItemsByIds as fetchItemsByIdsApi,
 } from './appContext/api';
 import { createFridgeActions } from './appContext/fridge';
@@ -76,8 +78,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         fetchItemsByIdsApi(API_URL, getAuthHeaders, userId, ids);
     const fetchItemPrices = (ids: string[]) =>
         fetchItemPricesApi(API_URL, getAuthHeaders, userId, ids);
+    const fetchItemPriceLeaders = (ids: string[]) =>
+        fetchItemPriceLeadersApi(API_URL, getAuthHeaders, userId, ids);
     const fetchClosestPrice = (name: string) =>
         fetchClosestPriceApi(API_URL, getAuthHeaders, userId, name);
+    const fetchClosestPriceWithStore = (name: string) =>
+        fetchClosestPriceWithStoreApi(API_URL, getAuthHeaders, userId, name);
     const ensureItemByName = (name: string, category?: string) =>
         ensureItemByNameApi(API_URL, getAuthHeaders, userId, name, category);
 
@@ -283,7 +289,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                         .map((item: any) => normalizeObjectId(item.itemId))
                         .filter((id: string | null): id is string => !!id);
                     const itemsById = await fetchItemsByIds(itemIds);
-                    const pricesById = await fetchItemPrices(itemIds);
+                    const pricesById = await fetchItemPriceLeaders(itemIds);
 
                     // Map backend shopping list to frontend GroceryItem
                     const mappedList = await Promise.all(
@@ -296,9 +302,17 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 item.name ||
                                 item.itemName ||
                                 '';
-                            let estimatedPrice = pricesById.get(itemId) ?? 0;
-                            if (!estimatedPrice && fallbackName) {
-                                estimatedPrice = await fetchClosestPrice(fallbackName);
+                            const priceLeader = pricesById.get(itemId);
+                            let estimatedPrice = priceLeader?.price ?? 0;
+                            let fallbackStoreName: string | undefined;
+                            let fallbackItemName: string | undefined;
+                            if ((!priceLeader?.storeName || !estimatedPrice) && fallbackName) {
+                                const fallback = await fetchClosestPriceWithStore(fallbackName);
+                                if (!estimatedPrice) {
+                                    estimatedPrice = fallback.price;
+                                }
+                                fallbackStoreName = fallback.storeName;
+                                fallbackItemName = fallback.itemName;
                             }
                             return {
                                 id: itemId,
@@ -306,6 +320,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 name: details?.name || 'Item',
                                 aisle: details?.category || 'General',
                                 targetPrice: estimatedPrice,
+                                bestStoreName: priceLeader?.storeName ?? fallbackStoreName,
+                                bestStoreItemName: priceLeader?.itemName ?? fallbackItemName,
                                 onSale: estimatedPrice > 0 ? item.onSale ?? false : false,
                                 checked: !!item.purchased,
                                 purchased: !!item.purchased,
@@ -313,6 +329,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 unit: item.unit ?? 'unit',
                                 priority: item.priority ?? 'medium',
                                 addedAt: item.addedAt,
+                                fromRecipe: item.fromRecipe,
                                 purchasedAt: item.purchasedAt,
                                 purchasedBy: item.purchasedBy,
                             };
@@ -336,6 +353,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                         priority: item.priority ?? 'medium',
                                         addedBy: userId,
                                         addedAt: item.addedAt ?? now,
+                                        fromRecipe: item.fromRecipe,
                                         purchased,
                                         purchasedBy: purchased
                                             ? (item.purchasedBy ?? userId)
@@ -451,6 +469,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         addToGroceryList,
         addItemsToGroceryList,
         toggleGroceryItem,
+        updateGroceryItem,
         clearPurchasedItems,
     } = createGroceryActions({
         userId,
@@ -462,8 +481,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         resolveShoppingListIdsWithItems,
         dedupeShoppingList,
         ensureItemByName,
-        fetchItemPrices,
-        fetchClosestPrice,
+        fetchItemPriceLeaders,
+        fetchClosestPriceWithStore,
         apiUrl: API_URL,
     });
 
@@ -518,6 +537,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 addToGroceryList,
                 addItemsToGroceryList,
                 toggleGroceryItem,
+                updateGroceryItem,
                 clearPurchasedItems,
                 addRecipe,
                 updateRecipe,

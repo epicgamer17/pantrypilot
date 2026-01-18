@@ -250,6 +250,24 @@ router.get('/grocery-stores/items/prices', async (req, res) => {
         effectivePrice: { $first: '$effectivePrice' },
       },
     },
+    {
+      $lookup: {
+        from: 'items',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'item',
+      },
+    },
+    { $unwind: { path: '$item', preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: 'groceryStores',
+        localField: 'storeId',
+        foreignField: '_id',
+        as: 'store',
+      },
+    },
+    { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
     { $limit: Number.isFinite(maxResults) ? maxResults : 50 },
     {
       $project: {
@@ -259,6 +277,8 @@ router.get('/grocery-stores/items/prices', async (req, res) => {
         salePrice: 1,
         onSale: 1,
         storeId: 1,
+        storeName: '$store.name',
+        itemName: '$item.name',
         effectivePrice: 1,
       },
     },

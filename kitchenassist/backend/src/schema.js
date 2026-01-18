@@ -275,6 +275,7 @@ const householdSchema = {
           priority: { bsonType: 'string' },
           addedBy: { bsonType: 'objectId' },
           addedAt: { bsonType: 'date' },
+          fromRecipe: { bsonType: 'string' },
           purchased: { bsonType: 'bool' },
           purchasedBy: { bsonType: 'objectId' },
           purchasedAt: { bsonType: 'date' },

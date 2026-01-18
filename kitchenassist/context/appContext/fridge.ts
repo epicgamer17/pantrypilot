@@ -44,7 +44,7 @@ export const createFridgeActions = ({
         category: item.category,
         quantity: item.quantity,
         unit: item.unit,
-        location: 'fridge',
+        location: item.location ?? 'fridge',
         purchaseDate: item.purchaseDate || new Date().toISOString(),
         expirationDate: item.expiryDate,
         notes: 'Added via App',

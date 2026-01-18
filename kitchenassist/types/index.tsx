@@ -15,6 +15,7 @@ export interface Item {
     purchaseDate: string;
     expiryDate: string;
     store: string;
+    location?: string;
     isUsed: boolean;
     percentWasted?: number;
 }
@@ -23,6 +24,8 @@ export interface GroceryItem {
     id: string;
     name: string;
     targetPrice?: number;
+    bestStoreName?: string;
+    bestStoreItemName?: string;
     aisle?: string;
     onSale?: boolean;
     checked?: boolean;
@@ -51,6 +54,7 @@ export interface Recipe {
     instructions?: string;
     isAiGenerated?: boolean;
     isPublic?: boolean;
+    sourceUrl?: string;
 }
 
 export interface PurchaseRecord {

@@ -61,6 +61,38 @@ export const fetchItemPrices = async (
   }
 };
 
+export const fetchItemPriceLeaders = async (
+  apiUrl: string,
+  getHeaders: HeadersBuilder,
+  userId: string | null,
+  ids: string[],
+) => {
+  if (!userId || !ids.length) {
+    return new Map<string, { price: number; storeName?: string; itemName?: string }>();
+  }
+  try {
+    const res = await fetch(
+      `${apiUrl}/grocery-stores/items/prices?ids=${ids.join(',')}`,
+      { headers: getHeaders() },
+    );
+    if (!res.ok) {
+      return new Map<string, { price: number; storeName?: string; itemName?: string }>();
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      return new Map<string, { price: number; storeName?: string; itemName?: string }>();
+    }
+    return new Map(
+      data.map((item: { itemId: string; effectivePrice?: number; storeName?: string; itemName?: string }) => [
+        String(item.itemId),
+        { price: Number(item.effectivePrice ?? 0), storeName: item.storeName, itemName: item.itemName },
+      ]),
+    );
+  } catch (error) {
+    return new Map<string, { price: number; storeName?: string; itemName?: string }>();
+  }
+};
+
 export const fetchClosestPrice = async (
   apiUrl: string,
   getHeaders: HeadersBuilder,
@@ -86,6 +118,38 @@ export const fetchClosestPrice = async (
     return Number.isFinite(price) ? price : 0;
   } catch (error) {
     return 0;
+  }
+};
+
+export const fetchClosestPriceWithStore = async (
+  apiUrl: string,
+  getHeaders: HeadersBuilder,
+  userId: string | null,
+  name: string,
+) => {
+  if (!userId || !name.trim()) return { price: 0 };
+  try {
+    const res = await fetch(
+      `${apiUrl}/grocery-stores/items/search?query=${encodeURIComponent(
+        name,
+      )}&limit=1&sortBy=price&sortOrder=asc`,
+      { headers: getHeaders() },
+    );
+    if (!res.ok) return { price: 0 };
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return { price: 0 };
+    const candidate = data[0];
+    const price =
+      candidate.onSale && candidate.salePrice
+        ? Number(candidate.salePrice)
+        : Number(candidate.price);
+    return {
+      price: Number.isFinite(price) ? price : 0,
+      storeName: candidate.store?.name,
+      itemName: candidate.item?.name,
+    };
+  } catch (error) {
+    return { price: 0 };
   }
 };
 

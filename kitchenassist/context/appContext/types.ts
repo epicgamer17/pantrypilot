@@ -28,10 +28,21 @@ export interface AppContextType {
     fromRecipe?: string,
   ) => void;
   addItemsToGroceryList: (
-    items: { name: string; category?: string; price?: number; fromRecipe?: string }[],
+    items: {
+      name: string;
+      category?: string;
+      price?: number;
+      fromRecipe?: string;
+      unit?: string;
+      quantity?: number;
+    }[],
   ) => void;
 
   toggleGroceryItem: (id: string) => void;
+  updateGroceryItem: (
+    id: string,
+    updates: { name?: string; quantity?: number; unit?: string; aisle?: string },
+  ) => void;
   clearPurchasedItems: () => void;
   addRecipe: (recipe: Recipe) => void;
   updateRecipe: (recipe: Recipe) => void;

@@ -858,6 +858,7 @@ router.patch('/households/:householdId', async (req, res) => {
             ? new ObjectId(item.addedBy)
             : undefined,
         addedAt: item.addedAt ? new Date(item.addedAt) : now,
+        fromRecipe: item.fromRecipe,
         purchased: item.purchased ?? false,
         purchasedBy:
           item.purchasedBy && ObjectId.isValid(item.purchasedBy)

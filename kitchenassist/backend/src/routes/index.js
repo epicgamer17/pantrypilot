@@ -8,6 +8,7 @@ const groceryStores = require('./grocery-stores');
 const images = require('./images');
 const recipes = require('./recipes'); // Import the new route
 const items = require('./items');
+const emailRoutes = require('./emails'); // Add this
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use(groceryStores);
 router.use(images);
 router.use(recipes); // Use the new route
 router.use(items);
+router.use(emailRoutes); // Use the email routes
 
 module.exports = router;

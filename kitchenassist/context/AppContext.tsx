@@ -413,6 +413,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 aisle: details?.category || 'General',
                                 packageQuantity: details?.packageQuantity,
                                 packageUnit: details?.packageUnit,
+                                packagePrice: estimatedPrice,
                                 itemUrl: details?.itemUrl ?? priceLeader?.itemUrl ?? fallbackItemUrl,
                                 targetPrice: getUnitPrice(
                                     estimatedPrice,

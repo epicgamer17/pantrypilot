@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpacity } from 'react-native';
-import { LineChart } from 'react-native-chart-kit';
+import { LineChart, PieChart } from 'react-native-chart-kit';
 import { useApp } from '../../context/AppContext';
 import { Card } from '../../components/ui/Card'; // Import Card
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
@@ -40,6 +40,35 @@ export default function AnalyticsScreen() {
     }]
   };
 
+  const aisleTotals: { [key: string]: number } = {};
+  purchaseHistory.forEach((entry) => {
+    if (entry.category === 'Total') return;
+    const category = entry.category || 'Other';
+    const lineTotal = (entry.price || 0) * (entry.quantity || 1);
+    aisleTotals[category] = (aisleTotals[category] || 0) + lineTotal;
+  });
+
+  const aisleColors = [
+    '#3E7CB1',
+    '#F4A259',
+    '#5B8E7D',
+    '#B56576',
+    '#7F5539',
+    '#2A9D8F',
+    '#E9C46A',
+    '#6D597A',
+  ];
+
+  const aisleSpendingData = Object.entries(aisleTotals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, total], index) => ({
+      name,
+      total,
+      color: aisleColors[index % aisleColors.length],
+      legendFontColor: Colors.light.textSecondary,
+      legendFontSize: 12,
+    }));
+
   const expensiveItems = purchaseHistory
     .filter(i => i.price > 20 && i.category !== 'Total')
     .sort((a, b) => b.price - a.price)
@@ -69,7 +98,8 @@ export default function AnalyticsScreen() {
   const [purchasePage, setPurchasePage] = useState(1);
   const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(purchaseEntries.length / pageSize));
-  const pagedPurchases = purchaseEntries.slice(0, purchasePage * pageSize);
+  const pageStart = (purchasePage - 1) * pageSize;
+  const pagedPurchases = purchaseEntries.slice(pageStart, pageStart + pageSize);
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={{ alignItems: 'center' }}>
@@ -119,26 +149,51 @@ export default function AnalyticsScreen() {
           )}
         </View>
 
+        {/* --- SPENDING BY AISLE --- */}
+        {aisleSpendingData.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Spending by Aisle 🧾</Text>
+            <Text style={Typography.caption}>Where your grocery budget goes</Text>
+
+            <Card variant="elevated" style={styles.chartCardOverride}>
+              <PieChart
+                data={aisleSpendingData}
+                width={chartWidth}
+                height={220}
+                accessor="total"
+                backgroundColor="transparent"
+                paddingLeft="10"
+                chartConfig={{
+                  color: (opacity = 1) => `rgba(51, 51, 51, ${opacity})`,
+                }}
+                hasLegend
+              />
+            </Card>
+          </View>
+        )}
+
         {/* --- BULK BUY OPPORTUNITIES --- */}
         {frequentItems.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Bulk Buy Opportunities 📦</Text>
             <Text style={Typography.caption}>You buy these often. Size up to save.</Text>
 
-            {frequentItems.map((item, index) => {
-              const potentialSavings = (item.avgPrice * item.count) * 0.20;
-              return (
-                <Card key={index} variant="elevated" style={styles.opportunityCardOverride}>
-                  <View>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                    <Text style={Typography.caption}>Bought {item.count} times recently</Text>
-                  </View>
-                  <View style={styles.savingsBadge}>
-                    <Text style={styles.savingsText}>Save ~${potentialSavings.toFixed(2)}</Text>
-                  </View>
-                </Card>
-              );
-            })}
+            <ScrollView style={styles.bulkBuyScroll} contentContainerStyle={styles.bulkBuyContent}>
+              {frequentItems.map((item, index) => {
+                const potentialSavings = (item.avgPrice * item.count) * 0.20;
+                return (
+                  <Card key={index} variant="elevated" style={styles.opportunityCardOverride}>
+                    <View>
+                      <Text style={styles.cardTitle}>{item.name}</Text>
+                      <Text style={Typography.caption}>Bought {item.count} times recently</Text>
+                    </View>
+                    <View style={styles.savingsBadge}>
+                      <Text style={styles.savingsText}>Save ~${potentialSavings.toFixed(2)}</Text>
+                    </View>
+                  </Card>
+                );
+              })}
+            </ScrollView>
           </View>
         )}
 
@@ -148,18 +203,20 @@ export default function AnalyticsScreen() {
             <Text style={styles.sectionTitle}>Smart Swaps 💸</Text>
             <Text style={Typography.caption}>High cost items found in history</Text>
 
-            {expensiveItems.map((item) => (
-              <Card key={item.id} variant="elevated" style={styles.swapCardOverride}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{item.name}</Text>
-                  <Text style={Typography.caption}>Paid ${item.price.toFixed(2)} at {item.store}</Text>
-                </View>
-                <View>
-                  <Text style={styles.suggestionTitle}>Try Generic?</Text>
-                  <Text style={styles.suggestionPrice}>Est. ${(item.price * 0.6).toFixed(2)}</Text>
-                </View>
-              </Card>
-            ))}
+            <ScrollView style={styles.smartSwapScroll} contentContainerStyle={styles.smartSwapContent}>
+              {expensiveItems.map((item) => (
+                <Card key={item.id} variant="elevated" style={styles.swapCardOverride}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <Text style={Typography.caption}>Paid ${item.price.toFixed(2)} at {item.store}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.suggestionTitle}>Try Generic?</Text>
+                    <Text style={styles.suggestionPrice}>Est. ${(item.price * 0.6).toFixed(2)}</Text>
+                  </View>
+                </Card>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -201,7 +258,7 @@ export default function AnalyticsScreen() {
 
           {pagedPurchases.length ? (
             <Card variant="elevated" style={styles.historyCardOverride}>
-              <ScrollView style={styles.historyList}>
+              <ScrollView style={styles.historyList} contentContainerStyle={styles.historyContent}>
                 {pagedPurchases.map((entry) => {
                   const total = (entry.price || 0) * (entry.quantity || 1);
                   const dateLabel = new Date(entry.date).toLocaleDateString(undefined, {
@@ -294,6 +351,28 @@ const styles = StyleSheet.create({
     borderLeftWidth: 5,
     borderLeftColor: Colors.light.success
   },
+  bulkBuyScroll: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.secondary,
+    padding: Spacing.s,
+  },
+  bulkBuyContent: {
+    paddingBottom: Spacing.s,
+  },
+  smartSwapScroll: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.secondary,
+    padding: Spacing.s,
+  },
+  smartSwapContent: {
+    paddingBottom: Spacing.s,
+  },
 
   swapCardOverride: {
     flexDirection: 'row',
@@ -331,6 +410,14 @@ const styles = StyleSheet.create({
   },
   historyList: {
     flexGrow: 0,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.secondary,
+    padding: Spacing.s,
+  },
+  historyContent: {
+    paddingBottom: Spacing.s,
   },
   historyRow: {
     flexDirection: 'row',

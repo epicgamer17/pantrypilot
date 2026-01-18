@@ -131,6 +131,7 @@ export const createGroceryActions = ({
       aisle: resolved.category ?? category,
       packageQuantity: details?.packageQuantity,
       packageUnit: details?.packageUnit,
+      packagePrice: estimatedPrice,
       itemUrl: details?.itemUrl ?? bestStoreItemUrl,
       targetPrice,
       bestStoreName,
@@ -241,6 +242,7 @@ export const createGroceryActions = ({
         ),
         packageQuantity: details?.packageQuantity,
         packageUnit: details?.packageUnit,
+        packagePrice,
         itemUrl: details?.itemUrl ?? item.itemUrl,
       };
     });

@@ -33,6 +33,16 @@ export const createFridgeActions = ({
   apiUrl,
   syncHouseholdId,
 }: FridgeDeps) => {
+  const buildDefaultExpiryDate = (category?: string) => {
+    const normalized = (category || '').toLowerCase();
+    let days: number | null = null;
+    if (normalized === 'meat') days = 4;
+    if (normalized === 'produce') days = 7;
+    if (normalized === 'dairy') days = 14;
+    if (!days) return '';
+    return new Date(Date.now() + days * 86400000).toISOString();
+  };
+
   const isValidObjectId = (value?: string | null) =>
     !!value && /^[a-f0-9]{24}$/i.test(value);
 
@@ -48,6 +58,7 @@ export const createFridgeActions = ({
       (isValidObjectId(item.itemId) ? item.itemId : null) ??
       (isValidObjectId(item.id) ? item.id : null);
     const resolvedName = item.name?.trim?.() || 'Item';
+    const defaultExpiryDate = buildDefaultExpiryDate(item.category);
 
     try {
       const payload = {
@@ -59,7 +70,7 @@ export const createFridgeActions = ({
         location: item.location ?? 'fridge',
         purchasePrice: item.purchasePrice ?? undefined,
         purchaseDate: item.purchaseDate || new Date().toISOString(),
-        expirationDate: item.expiryDate,
+        expirationDate: item.expiryDate || defaultExpiryDate || undefined,
         notes: 'Added via App',
       };
 

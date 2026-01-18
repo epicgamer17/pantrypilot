@@ -29,6 +29,7 @@ export default function LoginScreen() {
             responseType: AuthSession.ResponseType.Token,
             extraParams: gmailOptIn
                 ? {
+                    connection: 'google-oauth2',
                     connection_scope: 'https://www.googleapis.com/auth/gmail.readonly',
                     prompt: 'consent',
                 }

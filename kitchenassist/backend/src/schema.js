@@ -106,6 +106,7 @@ const itemSchema = {
     averageShelfLife: { bsonType: numericBsonTypes },
     storageLocation: { bsonType: 'string' },
     imageUrl: { bsonType: 'string' },
+    itemUrl: { bsonType: 'string' },
     tags: {
       bsonType: 'array',
       items: { bsonType: 'string' },

@@ -113,6 +113,7 @@ export default function GroceryScreen() {
       CATEGORY_OPTIONS.includes(item.aisle) ? (item.aisle as Category) : 'Other';
     return {
       id: item.itemId ?? item.id,
+      itemId: item.itemId ?? item.id,
       name: item.name,
       category,
       quantity: item.quantity ?? 1,
@@ -151,9 +152,17 @@ export default function GroceryScreen() {
     const selectedItems = purchasedItems.filter((item) =>
       selectedPurchasedIds.has(item.id),
     );
+    if (!selectedItems.length) {
+      clearPurchasedItems();
+      setMoveModalVisible(false);
+      return;
+    }
     if (selectedItems.length) {
       const itemsToAdd = selectedItems.map(toFridgeItem);
-      await addItemsToFridge(itemsToAdd);
+      const added = await addItemsToFridge(itemsToAdd);
+      if (!added) {
+        return;
+      }
     }
     clearPurchasedItems();
     setMoveModalVisible(false);

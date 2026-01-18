@@ -70,7 +70,7 @@ router.get('/recipes', async (req, res) => {
 
 // POST a new recipe
 router.post('/recipes', async (req, res) => {
-    const { name, ingredients, instructions, householdId, isPublic, servings } = req.body;
+    const { name, ingredients, instructions, householdId, isPublic, servings, isAiGenerated } = req.body;
 
     if (!name || !ingredients) {
         return res.status(400).json({ error: 'Name and ingredients are required' });
@@ -117,6 +117,7 @@ router.post('/recipes', async (req, res) => {
         servings: Number.isFinite(parsedServings) ? parsedServings : undefined,
         householdId: householdId ? new ObjectId(householdId) : undefined,
         isPublic: !!isPublic, // Explicitly save public status (defaults to false)
+        isAiGenerated: !!isAiGenerated,
         createdAt: now,
         updatedAt: now
     });
@@ -132,7 +133,7 @@ router.post('/recipes', async (req, res) => {
 // PUT update a recipe
 router.put('/recipes/:id', async (req, res) => {
     const { id } = req.params;
-    const { name, ingredients, instructions, isPublic, servings } = req.body;
+    const { name, ingredients, instructions, isPublic, servings, isAiGenerated } = req.body;
     const db = req.app.locals.db;
 
     if (!ObjectId.isValid(id)) {
@@ -180,6 +181,7 @@ router.put('/recipes/:id', async (req, res) => {
             instructions: Array.isArray(instructions) ? instructions : [],
             servings: Number.isFinite(parsedServings) ? parsedServings : undefined,
             isPublic: !!isPublic,
+            isAiGenerated: isAiGenerated === undefined ? undefined : !!isAiGenerated,
             updatedAt: new Date()
         }),
         ...(shouldUnsetServings ? { $unset: { servings: '' } } : {}),

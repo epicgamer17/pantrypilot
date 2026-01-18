@@ -6,6 +6,7 @@ export interface AppContextType {
   recipes: Recipe[];
   purchaseHistory: PurchaseRecord[];
   recentlyDepletedItems: Item[];
+  fridgeLoading: boolean;
   userId: string | null;
   setUserId: (id: string | null) => void;
   householdId: string | null;
@@ -15,7 +16,7 @@ export interface AppContextType {
   refreshData: () => Promise<void>;
 
   addToFridge: (item: Omit<Item, 'initialQuantity'>) => void;
-  addItemsToFridge: (items: Omit<Item, 'initialQuantity'>[]) => void;
+  addItemsToFridge: (items: Omit<Item, 'initialQuantity'>[]) => Promise<boolean>;
   updateFridgeItem: (item: Item) => void;
   removeFromFridge: (id: string, percentWasted: number) => void;
   consumeItem: (id: string, amount: number) => void;

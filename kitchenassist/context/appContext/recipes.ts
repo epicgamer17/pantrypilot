@@ -82,6 +82,7 @@ export const createRecipeActions = ({
           instructions: normalizeInstructions(recipe.instructions),
           householdId: householdId,
           isPublic: (recipe as { isPublic?: boolean }).isPublic,
+          isAiGenerated: (recipe as { isAiGenerated?: boolean }).isAiGenerated,
           servings: normalizeServings(recipe.servings),
         }),
       });
@@ -130,6 +131,7 @@ export const createRecipeActions = ({
           instructions: normalizeInstructions(recipe.instructions),
           householdId: householdId,
           isPublic: (recipe as { isPublic?: boolean }).isPublic,
+          isAiGenerated: (recipe as { isAiGenerated?: boolean }).isAiGenerated,
           servings: normalizeServings(recipe.servings),
         }),
       });

@@ -130,6 +130,7 @@ const recipeSchema = {
     difficulty: { bsonType: 'string' },
     cuisine: { bsonType: 'string' },
     tags: { bsonType: 'array', items: { bsonType: 'string' } },
+    isAiGenerated: { bsonType: 'bool' },
     ingredients: {
       bsonType: 'array',
       items: {

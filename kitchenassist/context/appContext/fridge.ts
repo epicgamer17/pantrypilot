@@ -1,5 +1,5 @@
 import { Item, Recipe } from '../../types';
-import { areUnitsCompatible, normalizeQuantity } from '../../utils/unitConversion';
+import { areUnitsCompatible, denormalizeQuantity, normalizeQuantity } from '../../utils/unitConversion';
 
 type HeadersBuilder = (
   includeJson?: boolean,
@@ -31,18 +31,26 @@ export const createFridgeActions = ({
   apiUrl,
   syncHouseholdId,
 }: FridgeDeps) => {
+  const isValidObjectId = (value?: string | null) =>
+    !!value && /^[a-f0-9]{24}$/i.test(value);
+
   const addToFridge = async (item: Omit<Item, 'initialQuantity'>) => {
     let activeHouseholdId = householdId || (await syncHouseholdId());
-    if (!userId || !activeHouseholdId) return;
+    if (!userId || !activeHouseholdId) return false;
 
     const tempId = Math.random().toString();
     const optimisticItem = { ...item, id: tempId, initialQuantity: item.quantity };
     setFridgeItems((prev) => [...prev, optimisticItem]);
 
+    const resolvedItemId =
+      (isValidObjectId(item.itemId) ? item.itemId : null) ??
+      (isValidObjectId(item.id) ? item.id : null);
+    const resolvedName = item.name?.trim?.() || 'Item';
+
     try {
       const payload = {
-        itemId: item.id && item.id.length === 24 ? item.id : null,
-        name: item.name,
+        itemId: resolvedItemId ?? undefined,
+        name: resolvedName,
         category: item.category,
         quantity: item.quantity,
         unit: item.unit,
@@ -61,9 +69,9 @@ export const createFridgeActions = ({
         },
       );
 
-      if (!res.ok) {
-        const err = await res.json();
-        if (err.error === 'Household not found.') {
+        if (!res.ok) {
+          const err = await res.json();
+          if (err.error === 'Household not found.') {
           const refreshedHouseholdId = await syncHouseholdId();
           if (refreshedHouseholdId && refreshedHouseholdId !== activeHouseholdId) {
             activeHouseholdId = refreshedHouseholdId;
@@ -80,24 +88,31 @@ export const createFridgeActions = ({
               throw new Error(retryErr.error || 'Failed to add to fridge');
             }
             refreshData();
-            return;
+            return true;
           }
         }
         throw new Error(err.error || 'Failed to add to fridge');
       }
 
       refreshData();
+      return true;
     } catch (error) {
       setFridgeItems((prev) => prev.filter((i) => i.id !== tempId));
       console.error('Error adding to fridge:', error);
       alert('Could not save item. Check console.');
     }
+    return false;
   };
 
   const addItemsToFridge = async (items: Omit<Item, 'initialQuantity'>[]) => {
+    let allAdded = true;
     for (const item of items) {
-      await addToFridge(item);
+      const added = await addToFridge(item);
+      if (!added) {
+        allAdded = false;
+      }
     }
+    return allAdded;
   };
 
   const updateFridgeItem = async (updatedItem: Item) => {
@@ -226,10 +241,8 @@ export const createFridgeActions = ({
           consumedAmount = fridgeItem.quantity;
           consumeItem(fridgeItem.id, fridgeItem.quantity);
         } else {
-          // Calculate remaining portion and consume only what was used
-          const ratio = remainingBase / haveQty;
-          const newQty = fridgeItem.quantity * ratio;
-          consumedAmount = fridgeItem.quantity - newQty;
+          // Consume just the needed amount, expressed in the fridge unit
+          consumedAmount = denormalizeQuantity(needQty, fridgeUnit);
           consumeItem(fridgeItem.id, consumedAmount);
         }
 
@@ -243,7 +256,8 @@ export const createFridgeActions = ({
     const servingUnit = targetServings === 1 ? 'serving' : 'servings';
     const pricePerServing = targetServings > 0 ? totalCost / targetServings : 0;
     void addToFridge({
-      id: recipe.id || Math.random().toString(),
+      id: `cooked-${Date.now()}`,
+      itemId: undefined,
       name: recipe.name,
       category: 'Leftovers',
       quantity: targetServings,

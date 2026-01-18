@@ -55,6 +55,7 @@ export default function RecipesScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [sortBy, setSortBy] = useState<SortOption>('missing');
     const [searchQuery, setSearchQuery] = useState('');
+    const [hideAiRecipes, setHideAiRecipes] = useState(false);
 
     // Cook Modal State
     const [cookModalVisible, setCookModalVisible] = useState(false);
@@ -64,6 +65,7 @@ export default function RecipesScreen() {
     const [limitingIngredient, setLimitingIngredient] = useState<string | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [recipeToView, setRecipeToView] = useState<Recipe | null>(null);
+    const [geminiLoading, setGeminiLoading] = useState(false);
 
     // Data State
     const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
@@ -74,7 +76,10 @@ export default function RecipesScreen() {
     const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
     const [newRecipeName, setNewRecipeName] = useState('');
     const [isPublicRecipe, setIsPublicRecipe] = useState(false);
+    const [isAiRecipe, setIsAiRecipe] = useState(false);
     const [newInstructionsText, setNewInstructionsText] = useState('');
+    const [instructionsExpanded, setInstructionsExpanded] = useState(false);
+    const [leftColumnHeight, setLeftColumnHeight] = useState(0);
 
     const [currentIngName, setCurrentIngName] = useState('');
     const [currentIngItemId, setCurrentIngItemId] = useState<string | null>(null);
@@ -313,8 +318,12 @@ export default function RecipesScreen() {
 
     const getSortedRecipes = () => {
         const normalizedQuery = searchQuery.trim().toLowerCase();
-        const filtered = normalizedQuery
+        const filtered = (normalizedQuery || hideAiRecipes)
             ? activeRecipes.filter((recipe) => {
+                if (hideAiRecipes && recipe.isAiGenerated) {
+                    return false;
+                }
+                if (!normalizedQuery) return true;
                 const nameMatch = recipe.name?.toLowerCase().includes(normalizedQuery);
                 const ingredientMatch = recipe.ingredients?.some((ing) =>
                     ing.name?.toLowerCase().includes(normalizedQuery),
@@ -402,6 +411,8 @@ export default function RecipesScreen() {
             Alert.alert('No items', 'Add items to your fridge first.');
             return;
         }
+        if (geminiLoading) return;
+        setGeminiLoading(true);
         try {
             const res = await fetch(`${API_URL}/recipes/generate`, {
                 method: 'POST',
@@ -423,6 +434,7 @@ export default function RecipesScreen() {
             if (!recipe?.name || !Array.isArray(recipe.ingredients)) {
                 return;
             }
+            recipe.isAiGenerated = true;
             const instructionsText = buildInstructionText(recipe.instructions);
             const resolvedIngredients = await Promise.all(
                 recipe.ingredients.map(async (ingredient: Ingredient) => {
@@ -445,10 +457,13 @@ export default function RecipesScreen() {
             setNewRecipeName(recipe.name);
             setNewIngredients(resolvedIngredients);
             setNewInstructionsText(instructionsText);
-            setIsPublicRecipe(false);
+            setIsPublicRecipe(true);
+            setIsAiRecipe(true);
             setModalVisible(true);
         } catch (error) {
             return;
+        } finally {
+            setGeminiLoading(false);
         }
     };
 
@@ -493,6 +508,7 @@ export default function RecipesScreen() {
             ...recipe,
             id: '',
             isPublic: false,
+            isAiGenerated: recipe.isAiGenerated ?? false,
             ingredients: resolvedIngredients as Ingredient[],
         });
         setViewMode('household');
@@ -509,19 +525,26 @@ export default function RecipesScreen() {
         setNewRecipeName(recipe.name);
         setNewIngredients(recipe.ingredients.map(i => ({ ...i })));
         setIsPublicRecipe(!!recipe.isPublic);
+        setIsAiRecipe(!!recipe.isAiGenerated);
         setNewInstructionsText(buildInstructionText(recipe.instructions));
         setModalVisible(true);
     };
 
     const handleDeleteRecipe = (recipe: Recipe) => {
-        Alert.alert(
-            'Delete recipe?',
-            `Remove "${recipe.name}" from My Recipes?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive', onPress: () => deleteRecipe(recipe.id) },
-            ],
-        );
+        const title = 'Delete recipe?';
+        const message = `Remove "${recipe.name}" from My Recipes?`;
+        if (Platform.OS === 'web') {
+            const confirmed =
+                typeof window !== 'undefined' ? window.confirm(message) : true;
+            if (confirmed) {
+                deleteRecipe(recipe.id);
+            }
+            return;
+        }
+        Alert.alert(title, message, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: () => deleteRecipe(recipe.id) },
+        ]);
     };
 
     const openNewRecipeModal = () => {
@@ -529,6 +552,7 @@ export default function RecipesScreen() {
         setNewRecipeName('');
         setNewIngredients([]);
         setIsPublicRecipe(false);
+        setIsAiRecipe(false);
         setNewInstructionsText('');
         setModalVisible(true);
     };
@@ -576,7 +600,8 @@ export default function RecipesScreen() {
             name: newRecipeName,
             ingredients: newIngredients,
             instructions: parseInstructions(newInstructionsText),
-            isPublic: isPublicRecipe
+            isPublic: isPublicRecipe,
+            isAiGenerated: isAiRecipe,
         };
 
         if (editingRecipeId) {
@@ -589,6 +614,7 @@ export default function RecipesScreen() {
         setNewRecipeName('');
         setNewIngredients([]);
         setIsPublicRecipe(false);
+        setIsAiRecipe(false);
         setNewInstructionsText('');
         setEditingRecipeId(null);
         setModalVisible(false);
@@ -625,18 +651,37 @@ export default function RecipesScreen() {
                         <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
                             <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleGeminiCook} style={styles.geminiButton}>
+                        <TouchableOpacity
+                            onPress={handleGeminiCook}
+                            style={[styles.geminiButton, geminiLoading && styles.geminiButtonDisabled]}
+                            disabled={geminiLoading}
+                        >
                             <LinearGradient
                                 colors={['#2f80ff', '#8a5cff']}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 1 }}
                                 style={styles.geminiGradient}
                             >
-                                <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
+                                {geminiLoading ? (
+                                    <ActivityIndicator color="white" />
+                                ) : (
+                                    <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
+                                )}
                             </LinearGradient>
                         </TouchableOpacity>
                     </View>
                 )}
+
+                <View style={styles.filterRow}>
+                    <TouchableOpacity
+                        style={[styles.filterChip, hideAiRecipes && styles.filterChipActive]}
+                        onPress={() => setHideAiRecipes((prev) => !prev)}
+                    >
+                        <Text style={[styles.filterChipText, hideAiRecipes && styles.filterChipTextActive]}>
+                            Hide AI recipes
+                        </Text>
+                    </TouchableOpacity>
+                </View>
 
                 {/* Row 3: Sort Controls */}
                 <View style={styles.sortRow}>
@@ -726,7 +771,14 @@ export default function RecipesScreen() {
                                     activeOpacity={0.7}
                                 >
                                     <View>
-                                        <Text style={styles.recipeName}>{item.name}</Text>
+                                        <View style={styles.recipeTitleRow}>
+                                            <Text style={styles.recipeName}>{item.name}</Text>
+                                            {item.isAiGenerated && (
+                                                <View style={styles.aiBadge}>
+                                                    <Text style={styles.aiBadgeText}>AI</Text>
+                                                </View>
+                                            )}
+                                        </View>
                                         <Text style={styles.recipeDetail}>{isReady ? "✅ Ready to cook!" : `Missing ${missingCount} ingredients`}</Text>
 
                                         <View style={{ flexDirection: 'row', marginTop: 5, gap: 5 }}>
@@ -802,81 +854,115 @@ export default function RecipesScreen() {
                         />
                     </View>
 
-                    <Text style={Typography.label}>Add Ingredient</Text>
-                    <View style={styles.ingInputRow}>
-                        <View style={{ flex: 2 }}>
-                            <TextInput
-                                style={[styles.input, { marginBottom: 0 }]}
-                                placeholder="Item"
-                                value={currentIngName}
-                                onChangeText={(value) => {
-                                    setCurrentIngName(value);
-                                    setCurrentIngItemId(null);
-                                }}
-                            />
-                            {(filteredSuggestions.length > 0 || (!hasExactMatch && currentIngName.trim())) && (
-                                <View style={styles.suggestionBox}>
-                                    {filteredSuggestions.slice(0, 6).map(item => (
-                                        <TouchableOpacity
-                                            key={item.name}
-                                            style={styles.suggestionItem}
-                                            onPress={() => {
-                                                setCurrentIngName(item.name);
-                                                setCurrentIngItemId(item.id ?? null);
-                                            }}
-                                        >
-                                            <Text style={styles.suggestionText}>{item.name}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                    {!hasExactMatch && currentIngName.trim() && (
-                                        <TouchableOpacity
-                                            style={[styles.suggestionItem, styles.suggestionCreate]}
-                                            onPress={() => {
-                                                setNewItemName(currentIngName.trim());
-                                                setNewItemCategory('Other');
-                                                setShowCreateItemModal(true);
-                                            }}
-                                        >
-                                            <Text style={styles.suggestionCreateText}>
-                                                Create "{currentIngName.trim()}"
-                                            </Text>
-                                        </TouchableOpacity>
+                    <View style={styles.modalSplitRow}>
+                        <View
+                            style={styles.modalColumn}
+                            onLayout={(event) => {
+                                const height = event.nativeEvent.layout.height;
+                                if (!leftColumnHeight && height > 0) {
+                                    setLeftColumnHeight(height);
+                                }
+                            }}
+                        >
+                            <Text style={Typography.label}>Add Ingredient</Text>
+                            <View style={styles.ingInputRow}>
+                                <View style={{ flex: 2 }}>
+                                    <TextInput
+                                        style={[styles.input, { marginBottom: 0 }]}
+                                        placeholder="Item"
+                                        value={currentIngName}
+                                        onChangeText={(value) => {
+                                            setCurrentIngName(value);
+                                            setCurrentIngItemId(null);
+                                        }}
+                                    />
+                                    {(filteredSuggestions.length > 0 || (!hasExactMatch && currentIngName.trim())) && (
+                                        <View style={styles.suggestionBox}>
+                                            {filteredSuggestions.slice(0, 6).map(item => (
+                                                <TouchableOpacity
+                                                    key={item.name}
+                                                    style={styles.suggestionItem}
+                                                    onPress={() => {
+                                                        setCurrentIngName(item.name);
+                                                        setCurrentIngItemId(item.id ?? null);
+                                                    }}
+                                                >
+                                                    <Text style={styles.suggestionText}>{item.name}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                            {!hasExactMatch && currentIngName.trim() && (
+                                                <TouchableOpacity
+                                                    style={[styles.suggestionItem, styles.suggestionCreate]}
+                                                    onPress={() => {
+                                                        setNewItemName(currentIngName.trim());
+                                                        setNewItemCategory('Other');
+                                                        setShowCreateItemModal(true);
+                                                    }}
+                                                >
+                                                    <Text style={styles.suggestionCreateText}>
+                                                        Create "{currentIngName.trim()}"
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     )}
                                 </View>
-                            )}
-                        </View>
-                        <TextInput style={[styles.input, { flex: 1, marginBottom: 0, marginLeft: 10 }]} placeholder="Qty" keyboardType="numeric" value={currentIngQty} onChangeText={setCurrentIngQty} />
-                        <TouchableOpacity style={styles.addIngBtn} onPress={addIngredientToTemp}><Text style={styles.addIngText}>+</Text></TouchableOpacity>
-                    </View>
-
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitRow}>
-                        {UNITS.map(unit => (
-                            <TouchableOpacity key={unit} style={[styles.unitChip, currentIngUnit === unit && styles.activeUnitChip]} onPress={() => setCurrentIngUnit(unit)}>
-                                <Text style={[styles.unitText, currentIngUnit === unit && styles.activeUnitText]}>{unit}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-
-                    <Text style={[Typography.label, { marginTop: 20 }]}>Ingredients:</Text>
-                    <ScrollView style={styles.ingList}>
-                        {newIngredients.map((ing, index) => (
-                            <View key={index} style={styles.ingItemRow}>
-                                <TouchableOpacity onPress={() => removeIngredient(index)}>
-                                    <Text style={{ color: Colors.light.danger, marginRight: 10, fontWeight: 'bold' }}>X</Text>
-                                </TouchableOpacity>
-                                <Text style={styles.ingItemText}>• {ing.quantity} {ing.unit} {ing.name}</Text>
+                                <TextInput style={[styles.input, { flex: 1, marginBottom: 0, marginLeft: 10 }]} placeholder="Qty" keyboardType="numeric" value={currentIngQty} onChangeText={setCurrentIngQty} />
+                                <TouchableOpacity style={styles.addIngBtn} onPress={addIngredientToTemp}><Text style={styles.addIngText}>+</Text></TouchableOpacity>
                             </View>
-                        ))}
-                    </ScrollView>
 
-                    <Text style={[Typography.label, { marginTop: 16 }]}>Instructions</Text>
-                    <TextInput
-                        style={[styles.input, styles.instructionsInput]}
-                        placeholder="One step per line"
-                        value={newInstructionsText}
-                        onChangeText={setNewInstructionsText}
-                        multiline
-                    />
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.unitRow}>
+                                {UNITS.map(unit => (
+                                    <TouchableOpacity key={unit} style={[styles.unitChip, currentIngUnit === unit && styles.activeUnitChip]} onPress={() => setCurrentIngUnit(unit)}>
+                                        <Text style={[styles.unitText, currentIngUnit === unit && styles.activeUnitText]}>{unit}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                            <Text style={[Typography.label, { marginTop: 20 }]}>Ingredients:</Text>
+                            <ScrollView style={styles.ingList}>
+                                {newIngredients.map((ing, index) => (
+                                    <View key={index} style={styles.ingItemRow}>
+                                        <TouchableOpacity onPress={() => removeIngredient(index)}>
+                                            <Text style={{ color: Colors.light.danger, marginRight: 10, fontWeight: 'bold' }}>X</Text>
+                                        </TouchableOpacity>
+                                        <Text style={styles.ingItemText}>• {ing.quantity} {ing.unit} {ing.name}</Text>
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        </View>
+                        <View style={styles.modalColumn}>
+                            <View style={styles.instructionsHeader}>
+                                <Text style={[Typography.label, { marginTop: 0 }]}>Instructions</Text>
+                                <TouchableOpacity
+                                    style={styles.instructionsToggle}
+                                    onPress={() => setInstructionsExpanded((prev) => !prev)}
+                                >
+                                    <Text style={styles.instructionsToggleText}>
+                                        {instructionsExpanded ? 'Collapse' : 'Expand'}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                            <View
+                                style={[
+                                    styles.instructionsContainer,
+                                    {
+                                        height: instructionsExpanded
+                                            ? Math.max(leftColumnHeight || 240, 360)
+                                            : (leftColumnHeight || 240),
+                                    },
+                                ]}
+                            >
+                                <TextInput
+                                    style={[styles.input, styles.instructionsInput]}
+                                    placeholder="One step per line"
+                                    value={newInstructionsText}
+                                    onChangeText={setNewInstructionsText}
+                                    multiline
+                                />
+                            </View>
+                        </View>
+                    </View>
 
                     <View style={styles.modalActions}>
                         <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}><Text style={styles.cancelText}>Cancel</Text></TouchableOpacity>
@@ -984,7 +1070,14 @@ export default function RecipesScreen() {
                 <View style={styles.modalOverlay}>
                     <View style={styles.createItemCard}>
                         <ScrollView contentContainerStyle={styles.detailsScroll}>
-                            <Text style={Typography.subHeader}>{recipeToView?.name}</Text>
+                            <View style={styles.detailsTitleRow}>
+                                <Text style={Typography.subHeader}>{recipeToView?.name}</Text>
+                                {recipeToView?.isAiGenerated && (
+                                    <View style={styles.aiBadge}>
+                                        <Text style={styles.aiBadgeText}>AI</Text>
+                                    </View>
+                                )}
+                            </View>
                         {recipeToView?.sourceUrl ? (
                             <TouchableOpacity
                                 onPress={async () => {
@@ -1000,46 +1093,51 @@ export default function RecipesScreen() {
                                 </Text>
                             </TouchableOpacity>
                         ) : null}
-                        <Text style={[Typography.label, { marginTop: 16 }]}>Ingredients</Text>
-                        <View style={{ marginTop: 8 }}>
-                            {(() => {
-                                const ingredients = recipeToView?.ingredients || [];
-                                const groups = groupIngredientsBySource(ingredients);
-                                const renderGroup = (title: string, items: Ingredient[]) => {
-                                    if (!items.length) return null;
-                                    return (
-                                        <View style={{ marginBottom: 12 }}>
-                                            <Text style={Typography.caption}>{title}</Text>
-                                            {items.map((ingredient, index) => (
-                                                <View key={`${title}-${ingredient.name}-${index}`} style={styles.ingItemRow}>
-                                                    <Text style={styles.ingItemText}>
-                                                        • {ingredient.quantity} {ingredient.unit} {ingredient.name}
-                                                    </Text>
+                        <View style={styles.modalSplitRow}>
+                            <View style={styles.modalColumn}>
+                                <Text style={[Typography.label, { marginTop: 16 }]}>Ingredients</Text>
+                                <View style={{ marginTop: 8 }}>
+                                    {(() => {
+                                        const ingredients = recipeToView?.ingredients || [];
+                                        const groups = groupIngredientsBySource(ingredients);
+                                        const renderGroup = (title: string, items: Ingredient[]) => {
+                                            if (!items.length) return null;
+                                            return (
+                                                <View style={{ marginBottom: 12 }}>
+                                                    <Text style={Typography.caption}>{title}</Text>
+                                                    {items.map((ingredient, index) => (
+                                                        <View key={`${title}-${ingredient.name}-${index}`} style={styles.ingItemRow}>
+                                                            <Text style={styles.ingItemText}>
+                                                                • {ingredient.quantity} {ingredient.unit} {ingredient.name}
+                                                            </Text>
+                                                        </View>
+                                                    ))}
                                                 </View>
-                                            ))}
-                                        </View>
-                                    );
-                                };
-                                return (
-                                    <View>
-                                        {renderGroup('In fridge', groups.fridge)}
-                                        {renderGroup('On grocery list', groups.list)}
-                                        {renderGroup('Missing', groups.missing)}
-                                    </View>
-                                );
-                            })()}
-                        </View>
-
-                        <Text style={[Typography.label, { marginTop: 16 }]}>Instructions</Text>
-                        <View style={{ marginTop: 8 }}>
-                            {buildInstructionText(recipeToView?.instructions)
-                                .split('\n')
-                                .filter(Boolean)
-                                .map((line, index) => (
-                                    <Text key={`${line}-${index}`} style={styles.instructionLine}>
-                                        {index + 1}. {line}
-                                    </Text>
-                                ))}
+                                            );
+                                        };
+                                        return (
+                                            <View>
+                                                {renderGroup('In fridge', groups.fridge)}
+                                                {renderGroup('On grocery list', groups.list)}
+                                                {renderGroup('Missing', groups.missing)}
+                                            </View>
+                                        );
+                                    })()}
+                                </View>
+                            </View>
+                            <View style={styles.modalColumn}>
+                                <Text style={[Typography.label, { marginTop: 16 }]}>Instructions</Text>
+                                <View style={{ marginTop: 8 }}>
+                                    {buildInstructionText(recipeToView?.instructions)
+                                        .split('\n')
+                                        .filter(Boolean)
+                                        .map((line, index) => (
+                                            <Text key={`${line}-${index}`} style={styles.instructionLine}>
+                                                {index + 1}. {line}
+                                            </Text>
+                                        ))}
+                                </View>
+                            </View>
                         </View>
                         <View style={styles.modalActions}>
                             <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={styles.cancelBtn}>
@@ -1063,14 +1161,11 @@ const styles = StyleSheet.create({
 
     // Centered Add Button
     centeredAddButton: {
-        alignSelf: 'center',
+        alignSelf: 'flex-end',
         backgroundColor: Colors.light.primary,
         paddingVertical: 10,
         paddingHorizontal: 20,
         borderRadius: BorderRadius.l,
-        marginTop: Spacing.m,
-        width: '60%',
-        alignItems: 'center',
         ...Shadows.soft
     },
     centeredAddButtonText: {
@@ -1079,14 +1174,24 @@ const styles = StyleSheet.create({
         fontSize: 16
     },
     centeredButtonRow: {
-        alignItems: 'center',
+        alignItems: 'flex-end',
         gap: 8,
         marginTop: Spacing.m,
     },
+    filterRow: { marginTop: Spacing.s, flexDirection: 'row', justifyContent: 'flex-start' },
+    filterChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.l,
+        backgroundColor: Colors.light.secondary,
+    },
+    filterChipActive: { backgroundColor: Colors.light.primary },
+    filterChipText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary },
+    filterChipTextActive: { color: 'white' },
     geminiButton: {
-        width: '60%',
         borderRadius: BorderRadius.l,
         overflow: 'hidden',
+        alignSelf: 'flex-end',
         ...Shadows.soft,
     },
     geminiGradient: {
@@ -1100,6 +1205,7 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         fontSize: 15,
     },
+    geminiButtonDisabled: { opacity: 0.7 },
 
     // Toggle Styles
     toggleContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.l, padding: 3 },
@@ -1138,6 +1244,10 @@ const styles = StyleSheet.create({
 
     recipeName: { fontSize: 16, fontWeight: '600', color: Colors.light.text },
     recipeDetail: { ...Typography.caption, marginTop: 2 },
+    recipeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    detailsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+    aiBadge: { backgroundColor: '#0ea5e9', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+    aiBadgeText: { color: 'white', fontWeight: '700', fontSize: 11, letterSpacing: 0.3 },
 
     metaTag: { backgroundColor: Colors.light.background, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
     metaText: { fontSize: 11, fontWeight: '600', color: Colors.light.textSecondary },
@@ -1170,7 +1280,13 @@ const styles = StyleSheet.create({
     modalScroll: { flex: 1 },
     detailsScroll: { paddingBottom: 12 },
     input: { borderWidth: 1, borderColor: Colors.light.border, borderRadius: BorderRadius.s, padding: 12, fontSize: 16, marginBottom: 20, backgroundColor: Colors.light.background },
-    instructionsInput: { minHeight: 120, textAlignVertical: 'top' },
+    instructionsInput: { minHeight: 120, textAlignVertical: 'top', flex: 1, marginBottom: 0 },
+    modalSplitRow: { flexDirection: 'row', gap: 24, marginTop: 8, alignItems: 'stretch' },
+    modalColumn: { flex: 1, minWidth: 240, alignSelf: 'stretch' },
+    instructionsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    instructionsToggle: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.m, backgroundColor: Colors.light.secondary },
+    instructionsToggleText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary },
+    instructionsContainer: { marginTop: 8 },
 
     switchRow: {
         flexDirection: 'row',
@@ -1209,11 +1325,11 @@ const styles = StyleSheet.create({
     activeUnitChip: { backgroundColor: Colors.light.primary },
     unitText: { fontSize: 13, color: Colors.light.textSecondary, fontWeight: '600' },
     activeUnitText: { color: 'white' },
-    ingList: { maxHeight: 200, marginBottom: 30, backgroundColor: Colors.light.background, padding: 10, borderRadius: BorderRadius.s },
+    ingList: { maxHeight: 260, minHeight: 140, marginBottom: 20, backgroundColor: Colors.light.background, padding: 10, borderRadius: BorderRadius.s },
     ingItemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
-    ingItemText: { fontSize: 16, color: Colors.light.text },
-    instructionLine: { fontSize: 14, color: Colors.light.textSecondary, marginBottom: 6 },
-    modalActions: { flexDirection: 'row', gap: 15 },
+    ingItemText: { fontSize: 15, color: Colors.light.text },
+    instructionLine: { fontSize: 15, color: Colors.light.textSecondary, marginBottom: 6 },
+    modalActions: { flexDirection: 'row', gap: 15, marginTop: 16 },
     cancelBtn: { flex: 1, padding: 15, borderRadius: 10, backgroundColor: Colors.light.secondary, alignItems: 'center' },
     saveBtn: { flex: 2, padding: 15, borderRadius: 10, backgroundColor: Colors.light.primary, alignItems: 'center' },
     cancelText: { fontWeight: '600', color: Colors.light.textSecondary },

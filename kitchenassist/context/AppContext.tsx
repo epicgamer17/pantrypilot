@@ -51,6 +51,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Data State
     const [fridgeItems, setFridgeItems] = useState<Item[]>([]);
+    const [fridgeLoading, setFridgeLoading] = useState(false);
     const [groceryList, setGroceryList] = useState<GroceryItem[]>([]);
     const [recipes, setRecipes] = useState<Recipe[]>([]);
     const [purchaseHistory, setPurchaseHistory] = useState<PurchaseRecord[]>([]);
@@ -228,55 +229,62 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             console.log(`[AppContext] Refreshing data for household: ${householdId}`);
 
             // A. Fetch Fridge Items
-            const fridgeRes = await fetch(
-                `${API_URL}/households/${householdId}/fridge-items`,
-                { headers: getAuthHeaders() },
-            );
-            if (fridgeRes.ok) {
-                const data = await fridgeRes.json();
-                const itemIds = data
-                    .map((item: Item) => normalizeObjectId(item.itemId))
-                    .filter((id: string | null): id is string => !!id);
-                const pricesById = await fetchItemPrices(itemIds);
-                const pricedItems = await Promise.all(
-                    data.map(async (item: Item) => {
-                        const resolvedItemId = normalizeObjectId(item.itemId);
-                        if (item.purchasePrice && item.purchasePrice > 0) {
-                            return { ...item, _needsBackfill: false };
-                        }
-                        const idPrice = resolvedItemId
-                            ? pricesById.get(resolvedItemId) ?? 0
-                            : 0;
-                        if (idPrice > 0) {
-                            return { ...item, purchasePrice: idPrice, _needsBackfill: true };
-                        }
-                        const estimate = await fetchClosestPrice(item.name);
+            setFridgeLoading(true);
+            try {
+                const fridgeRes = await fetch(
+                    `${API_URL}/households/${householdId}/fridge-items`,
+                    { headers: getAuthHeaders() },
+                );
+                if (fridgeRes.ok) {
+                    const data = await fridgeRes.json();
+                    const itemIds = data
+                        .map((item: Item) => normalizeObjectId(item.itemId))
+                        .filter((id: string | null): id is string => !!id);
+                    const pricesById = await fetchItemPrices(itemIds);
+                    const pricedItems = await Promise.all(
+                        data.map(async (item: Item) => {
+                            const resolvedItemId = normalizeObjectId(item.itemId);
+                            if (item.purchasePrice && item.purchasePrice > 0) {
+                                return { ...item, _needsBackfill: false };
+                            }
+                            const idPrice = resolvedItemId
+                                ? pricesById.get(resolvedItemId) ?? 0
+                                : 0;
+                            if (idPrice > 0) {
+                                return { ...item, purchasePrice: idPrice, _needsBackfill: true };
+                            }
+                        const safeName = item.name ?? 'Item';
+                        const estimate = await fetchClosestPrice(safeName);
                         return {
                             ...item,
+                            name: safeName,
                             purchasePrice: estimate,
                             _needsBackfill: estimate > 0,
                         };
-                    }),
-                );
-                const cleanedItems = pricedItems.map(({ _needsBackfill, ...item }) => item);
-                setFridgeItems(cleanedItems);
-                const backfillTargets = pricedItems.filter(
-                    (item) => item._needsBackfill && item.purchasePrice && item.purchasePrice > 0,
-                );
-                await Promise.all(
-                    backfillTargets.map((item) =>
-                        fetch(
-                            `${API_URL}/households/${householdId}/fridge-items/${item.id}`,
-                            {
-                                method: 'PATCH',
-                                headers: getAuthHeaders(true, householdId),
-                                body: JSON.stringify({ purchasePrice: item.purchasePrice }),
-                            },
-                        ).catch(() => null),
-                    ),
-                );
-            } else {
-                console.error('Failed to fetch fridge items');
+                        }),
+                    );
+                    const cleanedItems = pricedItems.map(({ _needsBackfill, ...item }) => item);
+                    setFridgeItems(cleanedItems);
+                    const backfillTargets = pricedItems.filter(
+                        (item) => item._needsBackfill && item.purchasePrice && item.purchasePrice > 0,
+                    );
+                    await Promise.all(
+                        backfillTargets.map((item) =>
+                            fetch(
+                                `${API_URL}/households/${householdId}/fridge-items/${item.id}`,
+                                {
+                                    method: 'PATCH',
+                                    headers: getAuthHeaders(true, householdId),
+                                    body: JSON.stringify({ purchasePrice: item.purchasePrice }),
+                                },
+                            ).catch(() => null),
+                        ),
+                    );
+                } else {
+                    console.error('Failed to fetch fridge items');
+                }
+            } finally {
+                setFridgeLoading(false);
             }
 
             // B. Fetch Recipes
@@ -598,6 +606,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 recipes,
                 purchaseHistory,
                 recentlyDepletedItems,
+                fridgeLoading,
                 refreshData,
                 addToFridge,
                 addItemsToFridge,

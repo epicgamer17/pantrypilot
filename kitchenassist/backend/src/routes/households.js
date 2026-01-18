@@ -570,10 +570,10 @@ router.get('/households/:householdId/fridge-items', async (req, res) => {
       { $unwind: { path: '$itemDetails', preserveNullAndEmptyArrays: true } },
       {
         $project: {
-          id: '$fridgeItems._id',
+          id: { $ifNull: ['$fridgeItems._id', '$fridgeItems.itemId'] },
           itemId: '$fridgeItems.itemId',
-          name: '$itemDetails.name',
-          category: '$itemDetails.category',
+          name: { $ifNull: ['$itemDetails.name', '$fridgeItems.name'] },
+          category: { $ifNull: ['$itemDetails.category', '$fridgeItems.category'] },
           quantity: '$fridgeItems.quantity',
           initialQuantity: '$fridgeItems.quantity',
           unit: '$fridgeItems.unit',
@@ -590,7 +590,7 @@ router.get('/households/:householdId/fridge-items', async (req, res) => {
       .collection('households')
       .aggregate(pipeline)
       .toArray();
-    const items = results.filter((r) => r.id); // Filter out if no items
+    const items = results.filter((r) => r.id || r.itemId); // Filter out if no items
     return res.json(items);
   } catch (err) {
     console.error('Error fetching fridge items:', err);

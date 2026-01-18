@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, useWindowDimensions, TextInput, Modal, Button, Platform } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, useWindowDimensions, TextInput, Modal, Button, Platform, ActivityIndicator } from 'react-native';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -13,7 +13,7 @@ import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../consta
 export default function FridgeScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const { fridgeItems, removeFromFridge, updateFridgeItem, consumeItem } = useApp();
+  const { fridgeItems, removeFromFridge, updateFridgeItem, consumeItem, fridgeLoading } = useApp();
 
   const [editItem, setEditItem] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,7 +47,7 @@ export default function FridgeScreen() {
     }
     if (sortMode === 'category') {
       return items.sort((a, b) => {
-        const categoryCompare = a.category.localeCompare(b.category);
+        const categoryCompare = (a.category || 'Other').localeCompare(b.category || 'Other');
         if (categoryCompare !== 0) return categoryCompare;
         return a.name.localeCompare(b.name);
       });
@@ -228,10 +228,17 @@ export default function FridgeScreen() {
           contentContainerStyle={{ paddingBottom: 100 }}
           columnWrapperStyle={numColumns > 1 ? { gap: Spacing.m } : undefined}
           ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="fridge-outline" size={64} color={Colors.light.border} />
-              <Text style={styles.emptyText}>Fridge is empty!</Text>
-            </View>
+            fridgeLoading ? (
+              <View style={styles.loadingState}>
+                <ActivityIndicator size="large" color={Colors.light.primary} />
+                <Text style={styles.loadingText}>Loading fridge items...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <MaterialCommunityIcons name="fridge-outline" size={64} color={Colors.light.border} />
+                <Text style={styles.emptyText}>Fridge is empty!</Text>
+              </View>
+            )
           }
           renderItem={({ item }) => {
             let swipeableRef: Swipeable | null = null;
@@ -383,6 +390,8 @@ const styles = StyleSheet.create({
   btnFinish: { backgroundColor: Colors.light.successBg },
   btnTrash: { backgroundColor: Colors.light.dangerBg },
   webBtnText: { fontSize: 12, fontWeight: 'bold', color: Colors.light.text },
+  loadingState: { alignItems: 'center', marginTop: 60 },
+  loadingText: { fontSize: 14, fontWeight: '600', color: Colors.light.textSecondary, marginTop: Spacing.m },
   emptyState: { alignItems: 'center', marginTop: 60, opacity: 0.5 },
   emptyText: { fontSize: 18, fontWeight: '600', color: Colors.light.textSecondary, marginTop: Spacing.m },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },

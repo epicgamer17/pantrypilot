@@ -194,21 +194,24 @@ const callReceiptPipeline = async ({
   savedItemId,
   receiptImage,
 }) => {
-  const startUrl = new URL('/start_pipeline', baseUrl);
-  startUrl.searchParams.set('user_id', userId);
-  startUrl.searchParams.set('saved_item_id', savedItemId);
+  const startUrl = `${baseUrl}/start_pipeline?user_id=${userId}&saved_item_id=${savedItemId}`;
 
-  const startResponse = await fetch(startUrl.toString(), {
+  console.log('Start pipeline URL:', startUrl);
+
+  const startResponse = await fetch(startUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: apiKey,
+      'Authorization': apiKey,
     },
     body: JSON.stringify({ receipt_image: receiptImage }),
   });
 
+  console.log('Start pipeline response status:', startResponse.status);
+
   if (!startResponse.ok) {
     const errorText = await startResponse.text();
+    console.log('Start pipeline error:', errorText);
     throw new Error(errorText || `Status ${startResponse.status}`);
   }
 
@@ -218,16 +221,14 @@ const callReceiptPipeline = async ({
     return startData;
   }
 
-  const pollUrl = new URL('/get_pl_run', baseUrl);
-  pollUrl.searchParams.set('run_id', runId);
-  pollUrl.searchParams.set('user_id', userId);
+  const pollUrl = `${baseUrl}/get_pl_run?run_id=${runId}&user_id=${userId}`;
 
   const timeoutMs = 120000;
   const pollIntervalMs = 2000;
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    const pollResponse = await fetch(pollUrl.toString(), {
-      headers: { Authorization: apiKey },
+    const pollResponse = await fetch(pollUrl, {
+      headers: { 'Authorization': apiKey },
     });
     if (!pollResponse.ok) {
       const errorText = await pollResponse.text();
@@ -340,28 +341,475 @@ router.post('/households/join', async (req, res) => {
   return res.json({ householdId: household._id });
 });
 
+// Receipt processing from Gmail
+router.post('/households/:householdId/receipts/from-gmail', async (req, res) => {
+  const { householdId } = req.params;
+  const emailUrl = process.env.EMAIL_URL;
+  const pipelineApiKey = process.env.API_KEY || 'ef1f551abfa5460f945f8a5e32979b91';
+  const pipelineBaseUrl = process.env.BASE_URL || 'https://api.gumloop.com/api/v1';
+  const pipelineUserId = process.env.USER_ID || '6IBmuxzZmmXRRQ4lX4EiGO1GeoJ2';
+
+  if (!emailUrl) {
+    return res.status(500).json({ error: 'EMAIL_URL not configured in environment' });
+  }
+
+  const db = req.app.locals.db;
+  const now = new Date();
+
+  console.log('Processing receipt from Gmail');
+  console.log('EMAIL_URL:', emailUrl);
+  console.log('API_KEY:', pipelineApiKey ? `${pipelineApiKey.substring(0, 15)}...` : 'MISSING');
+
+  let webhookData;
+  try {
+    // Start the pipeline
+    console.log('Starting Gmail pipeline with URL:', emailUrl);
+    
+    const authHeader = `Bearer ${pipelineApiKey.replace('Bearer ', '')}`;
+    console.log('Authorization header:', authHeader.substring(0, 20) + '...');
+    
+    const startResponse = await fetch(emailUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader,
+      },
+    });
+
+    console.log('Gmail pipeline response status:', startResponse.status);
+
+    if (!startResponse.ok) {
+      const errorText = await startResponse.text();
+      console.log('Gmail pipeline error:', errorText);
+      throw new Error(errorText || `Status ${startResponse.status}`);
+    }
+
+    const startData = await startResponse.json();
+    const runId = startData?.run_id;
+    
+    if (!runId) {
+      if (startData.outputs && startData.state === 'DONE') {
+        webhookData = extractReceiptData(startData);
+      } else {
+        throw new Error('No run_id in pipeline response');
+      }
+    } else {
+      // Poll for completion
+      const pollUrl = `${pipelineBaseUrl}/get_pl_run?run_id=${runId}&user_id=${pipelineUserId}`;
+      const timeoutMs = 120000;
+      const pollIntervalMs = 2000;
+      const startTime = Date.now();
+      
+      while (Date.now() - startTime < timeoutMs) {
+        const pollResponse = await fetch(pollUrl, {
+          headers: { 'Authorization': pipelineApiKey.startsWith('Bearer ') ? pipelineApiKey : `Bearer ${pipelineApiKey}` },
+        });
+        
+        if (!pollResponse.ok) {
+          const errorText = await pollResponse.text();
+          throw new Error(errorText || `Status ${pollResponse.status}`);
+        }
+        
+        const pollData = await pollResponse.json();
+        const state = pollData?.state;
+        console.log('Gmail pipeline state:', state);
+        
+        if (state === 'DONE') {
+          webhookData = extractReceiptData(pollData);
+          break;
+        }
+        if (state === 'FAILED') {
+          console.log('Gmail pipeline failed. Full response:', JSON.stringify(pollData));
+          
+          // Extract user-friendly error from logs
+          let errorMsg = 'Gmail receipt pipeline failed.';
+          const logs = pollData?.log || [];
+          for (const log of logs) {
+            if (typeof log === 'string' && log.includes('__standard__:')) {
+              const match = log.match(/__standard__:\s*(.+)/);
+              if (match) {
+                errorMsg = match[1].replace(/\u001b\[\d+m/g, '').trim(); // Remove ANSI color codes
+                break;
+              }
+            }
+          }
+          
+          throw new Error(errorMsg);
+        }
+        
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+      
+      if (!webhookData) {
+        throw new Error('Gmail receipt pipeline timed out.');
+      }
+    }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Gmail receipt pipeline request failed.';
+    console.error('Gmail receipt pipeline request failed:', message);
+    return res.status(502).json({ error: message });
+  }
+
+  const groceryStore = normalizeStorePayload(
+    webhookData.groceryStore ?? webhookData.store,
+  );
+  const itemPayload =
+    webhookData.items ?? webhookData.item ?? webhookData.itemData;
+  const itemDataList = Array.isArray(itemPayload)
+    ? itemPayload
+    : itemPayload
+      ? [itemPayload]
+      : [];
+
+  if (!groceryStore || !itemDataList.length) {
+    console.log('Missing store or items:', webhookData);
+    return res
+      .status(400)
+      .json({ error: 'Gmail response missing groceryStore or items.' });
+  }
+  if (!groceryStore.name) {
+    return res
+      .status(400)
+      .json({ error: 'Gmail response missing groceryStore.name.' });
+  }
+
+  // Store Upsert
+  const gmailStoreUpdateData = omitUndefined({
+    name: groceryStore.name,
+    phone: groceryStore.phone,
+    hours: groceryStore.hours,
+    updatedAt: now,
+  });
+  // Always set location (required by schema)
+  gmailStoreUpdateData.location = groceryStore.location || {};
+
+  const storeResult = await db.collection('groceryStores').findOneAndUpdate(
+    getStoreFilter(groceryStore),
+    {
+      $set: gmailStoreUpdateData,
+      $setOnInsert: { createdAt: now },
+    },
+    { upsert: true, returnDocument: 'after' },
+  );
+  const storeDoc = getDoc(storeResult);
+  const storeId = storeDoc?._id;
+
+  if (!storeId) {
+    return res.status(500).json({ error: 'Failed to upsert grocery store.' });
+  }
+
+  const fridgeItemsToAdd = [];
+
+  for (const rawItem of itemDataList) {
+    const itemData = normalizeReceiptItem(rawItem);
+    if (!itemData?.name) {
+      continue;
+    }
+
+    const itemResult = await db.collection('items').findOneAndUpdate(
+      getItemFilter(itemData),
+      {
+        $set: omitUndefined({
+          name: itemData.name,
+          category: itemData.category,
+          subcategory: itemData.subcategory,
+          brand: itemData.brand,
+          barcode: itemData.barcode,
+          packageQuantity: itemData.packageQuantity,
+          packageUnit: itemData.packageUnit,
+          defaultUnit: itemData.defaultUnit,
+          nutritionalInfo: itemData.nutritionalInfo,
+          averageShelfLife: itemData.averageShelfLife,
+          storageLocation: itemData.storageLocation,
+          imageUrl: itemData.imageUrl,
+          tags: itemData.tags,
+          updatedAt: now,
+        }),
+        $setOnInsert: { createdAt: now },
+      },
+      { upsert: true, returnDocument: 'after' },
+    );
+    const itemDoc = getDoc(itemResult);
+    const itemId = itemDoc?._id;
+
+    if (!itemId) {
+      continue;
+    }
+
+    if (itemData.price !== undefined || itemData.salePrice !== undefined) {
+      await db.collection('storeInventory').findOneAndUpdate(
+        { storeId, itemId },
+        {
+          $set: omitUndefined({
+            price: itemData.price ?? itemData.salePrice ?? 0,
+            onSale: itemData.onSale ?? false,
+            salePrice: itemData.salePrice,
+            inStock: itemData.inStock ?? true,
+            aisle: itemData.aisle,
+            updatedAt: now,
+          }),
+          $setOnInsert: { createdAt: now },
+        },
+        { upsert: true },
+      );
+    }
+
+    const parsedExpiryDate = itemData.expirationDate ?? itemData.expiryDate;
+    const expiryDate =
+      parsedExpiryDate instanceof Date
+        ? parsedExpiryDate
+        : typeof parsedExpiryDate === 'string' && parsedExpiryDate.trim()
+          ? new Date(parsedExpiryDate)
+          : null;
+
+    const finalExpiryDate =
+      expiryDate && !isNaN(expiryDate.getTime()) ? expiryDate : null;
+
+    const fridgeItemId = new ObjectId();
+    const fridgeItem = omitUndefined({
+      _id: fridgeItemId,
+      itemId,
+      quantity: Number(itemData.quantity ?? 1),
+      unit: itemData.unit || itemData.packageUnit || itemDoc?.defaultUnit || 'unit',
+      location: itemData.storageLocation || 'fridge',
+      purchasePrice: Number(itemData.price ?? itemData.salePrice ?? 0),
+      purchaseDate: now,
+      expirationDate: finalExpiryDate ? finalExpiryDate : undefined,
+      isOpen: itemData.isOpen ?? false,
+      notes: itemData.notes,
+      addedAt: now,
+    });
+
+    // Add to household's fridgeItems array
+    await db.collection('households').updateOne(
+      { _id: new ObjectId(householdId) },
+      { 
+        $push: { fridgeItems: fridgeItem },
+        $set: { updatedAt: now }
+      }
+    );
+
+    fridgeItemsToAdd.push({ itemId, fridgeItemId });
+  }
+
+  console.log(`Processed ${fridgeItemsToAdd.length} items from Gmail receipt`);
+
+  return res.json({
+    householdId: new ObjectId(householdId),
+    storeId,
+    items: fridgeItemsToAdd,
+  });
+});
+
+// Receipt processing from URL
+router.post('/households/:householdId/receipts/from-url', async (req, res) => {
+  const { householdId } = req.params;
+  const { receiptUrl } = req.body;
+  const pipelineBaseUrl = process.env.BASE_URL || 'https://api.gumloop.com/api/v1';
+  const pipelineUserId = process.env.USER_ID || '6IBmuxzZmmXRRQ4lX4EiGO1GeoJ2';
+  const pipelineSavedItemId = process.env.SAVED_ITEM_ID || 'qPJPBHYMYQXZcYqG7dX13o';
+  const pipelineApiKey = process.env.API_KEY || 'ef1f551abfa5460f945f8a5e32979b91';
+
+  if (!receiptUrl || typeof receiptUrl !== 'string') {
+    return res.status(400).json({ error: 'receiptUrl is required.' });
+  }
+
+  const db = req.app.locals.db;
+  const now = new Date();
+
+  console.log('Processing receipt from URL:', receiptUrl);
+  console.log('Pipeline config:', {
+    baseUrl: pipelineBaseUrl,
+    apiKey: pipelineApiKey ? `${pipelineApiKey.substring(0, 10)}...` : 'MISSING',
+    userId: pipelineUserId,
+    savedItemId: pipelineSavedItemId,
+  });
+
+  let webhookData;
+  try {
+    const runResponse = await callReceiptPipeline({
+      baseUrl: pipelineBaseUrl,
+      apiKey: pipelineApiKey,
+      userId: pipelineUserId,
+      savedItemId: pipelineSavedItemId,
+      receiptImage: receiptUrl,
+    });
+    webhookData = extractReceiptData(runResponse);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Receipt pipeline request failed.';
+    console.error('Receipt pipeline request failed:', message);
+    return res.status(502).json({ error: message });
+  }
+
+  const groceryStore = normalizeStorePayload(
+    webhookData.groceryStore ?? webhookData.store,
+  );
+  const itemPayload =
+    webhookData.items ?? webhookData.item ?? webhookData.itemData;
+  const itemDataList = Array.isArray(itemPayload)
+    ? itemPayload
+    : itemPayload
+      ? [itemPayload]
+      : [];
+
+  if (!groceryStore || !itemDataList.length) {
+    console.log('Missing store or items:', webhookData);
+    return res
+      .status(400)
+      .json({ error: 'Webhook response missing groceryStore or items.' });
+  }
+  if (!groceryStore.name) {
+    return res
+      .status(400)
+      .json({ error: 'Webhook response missing groceryStore.name.' });
+  }
+
+  // Store Upsert
+  const urlStoreUpdateData = omitUndefined({
+    name: groceryStore.name,
+    phone: groceryStore.phone,
+    hours: groceryStore.hours,
+    updatedAt: now,
+  });
+  // Always set location (required by schema)
+  urlStoreUpdateData.location = groceryStore.location || {};
+
+  const storeResult = await db.collection('groceryStores').findOneAndUpdate(
+    getStoreFilter(groceryStore),
+    {
+      $set: urlStoreUpdateData,
+      $setOnInsert: { createdAt: now },
+    },
+    { upsert: true, returnDocument: 'after' },
+  );
+  const storeDoc = getDoc(storeResult);
+  const storeId = storeDoc?._id;
+
+  if (!storeId) {
+    return res.status(500).json({ error: 'Failed to upsert grocery store.' });
+  }
+
+  const fridgeItemsToAdd = [];
+
+  for (const rawItem of itemDataList) {
+    const itemData = normalizeReceiptItem(rawItem);
+    if (!itemData?.name) {
+      continue;
+    }
+
+    const itemResult = await db.collection('items').findOneAndUpdate(
+      getItemFilter(itemData),
+      {
+        $set: omitUndefined({
+          name: itemData.name,
+          category: itemData.category,
+          subcategory: itemData.subcategory,
+          brand: itemData.brand,
+          barcode: itemData.barcode,
+          packageQuantity: itemData.packageQuantity,
+          packageUnit: itemData.packageUnit,
+          defaultUnit: itemData.defaultUnit,
+          nutritionalInfo: itemData.nutritionalInfo,
+          averageShelfLife: itemData.averageShelfLife,
+          storageLocation: itemData.storageLocation,
+          imageUrl: itemData.imageUrl,
+          tags: itemData.tags,
+          updatedAt: now,
+        }),
+        $setOnInsert: { createdAt: now },
+      },
+      { upsert: true, returnDocument: 'after' },
+    );
+    const itemDoc = getDoc(itemResult);
+    const itemId = itemDoc?._id;
+
+    if (!itemId) {
+      continue;
+    }
+
+    if (itemData.price !== undefined || itemData.salePrice !== undefined) {
+      await db.collection('storeInventory').findOneAndUpdate(
+        { storeId, itemId },
+        {
+          $set: omitUndefined({
+            price: itemData.price ?? itemData.salePrice ?? 0,
+            onSale: itemData.onSale ?? false,
+            salePrice: itemData.salePrice,
+            inStock: itemData.inStock ?? true,
+            aisle: itemData.aisle,
+            updatedAt: now,
+          }),
+          $setOnInsert: { createdAt: now },
+        },
+        { upsert: true },
+      );
+    }
+
+    const parsedExpiryDate = itemData.expirationDate ?? itemData.expiryDate;
+    const expiryDate =
+      parsedExpiryDate instanceof Date
+        ? parsedExpiryDate
+        : typeof parsedExpiryDate === 'string' && parsedExpiryDate.trim()
+          ? new Date(parsedExpiryDate)
+          : null;
+
+    const finalExpiryDate =
+      expiryDate && !isNaN(expiryDate.getTime()) ? expiryDate : null;
+
+    const fridgeItemId = new ObjectId();
+    const fridgeItem = omitUndefined({
+      _id: fridgeItemId,
+      itemId,
+      quantity: Number(itemData.quantity ?? 1),
+      unit: itemData.unit || itemData.packageUnit || itemDoc?.defaultUnit || 'unit',
+      location: itemData.storageLocation || 'fridge',
+      purchasePrice: Number(itemData.price ?? itemData.salePrice ?? 0),
+      purchaseDate: now,
+      expirationDate: finalExpiryDate ? finalExpiryDate : undefined,
+      isOpen: itemData.isOpen ?? false,
+      notes: itemData.notes,
+      addedAt: now,
+    });
+
+    // Add to household's fridgeItems array
+    await db.collection('households').updateOne(
+      { _id: new ObjectId(householdId) },
+      { 
+        $push: { fridgeItems: fridgeItem },
+        $set: { updatedAt: now }
+      }
+    );
+
+    fridgeItemsToAdd.push({ itemId, fridgeItemId });
+  }
+
+  console.log(`Processed ${fridgeItemsToAdd.length} items from receipt URL`);
+
+  return res.json({
+    householdId: new ObjectId(householdId),
+    storeId,
+    items: fridgeItemsToAdd,
+  });
+});
+
 router.post(
   '/households/:householdId/receipts',
   upload.single('receipt'),
   async (req, res) => {
     const { householdId } = req.params;
-    const pipelineBaseUrl = process.env.RECEIPT_PIPELINE_BASE_URL;
-    const pipelineUserId = process.env.RECEIPT_PIPELINE_USER_ID;
-    const pipelineSavedItemId = process.env.RECEIPT_PIPELINE_SAVED_ITEM_ID;
-    const pipelineApiKey = process.env.RECEIPT_PIPELINE_API_KEY;
+    const pipelineBaseUrl = process.env.BASE_URL || 'https://api.gumloop.com/api/v1';
+    const pipelineUserId = process.env.USER_ID || '6IBmuxzZmmXRRQ4lX4EiGO1GeoJ2';
+    const pipelineSavedItemId = process.env.SAVED_ITEM_ID || 'qPJPBHYMYQXZcYqG7dX13o';
+    const pipelineApiKey = process.env.API_KEY || 'ef1f551abfa5460f945f8a5e32979b91';
 
     if (!req.file) {
       return res.status(400).json({ error: 'Missing receipt file.' });
-    }
-    if (
-      !pipelineBaseUrl ||
-      !pipelineUserId ||
-      !pipelineSavedItemId ||
-      !pipelineApiKey
-    ) {
-      return res
-        .status(500)
-        .json({ error: 'Missing receipt pipeline configuration.' });
     }
 
     const db = req.app.locals.db;
@@ -420,16 +868,19 @@ router.post(
     }
 
     // Store Upsert
+    const uploadStoreUpdateData = omitUndefined({
+      name: groceryStore.name,
+      phone: groceryStore.phone,
+      hours: groceryStore.hours,
+      updatedAt: now,
+    });
+    // Always set location (required by schema)
+    uploadStoreUpdateData.location = groceryStore.location || {};
+
     const storeResult = await db.collection('groceryStores').findOneAndUpdate(
       getStoreFilter(groceryStore),
       {
-        $set: omitUndefined({
-          name: groceryStore.name,
-          location: groceryStore.location,
-          phone: groceryStore.phone,
-          hours: groceryStore.hours,
-          updatedAt: now,
-        }),
+        $set: uploadStoreUpdateData,
         $setOnInsert: { createdAt: now },
       },
       { upsert: true, returnDocument: 'after' },

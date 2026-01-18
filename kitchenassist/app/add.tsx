@@ -42,9 +42,12 @@ const UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup'];
 export default function AddItemScreen() {
   const router = useRouter();
   const { addToFridge, householdId, userId, refreshData } = useApp();
+  const [isNavigating, setIsNavigating] = useState(false);
   const [activeTab, setActiveTab] = useState<'manual' | 'receipt'>('manual');
+  const [receiptMode, setReceiptMode] = useState<'upload' | 'url' | 'gmail'>('upload');
   const [selectedReceipt, setSelectedReceipt] =
     useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [receiptUrl, setReceiptUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -82,7 +85,7 @@ export default function AddItemScreen() {
       isUsed: false,
     });
 
-    router.back();
+    router.replace('/(tabs)/fridge');
   };
 
   const pickReceipt = async () => {
@@ -105,47 +108,106 @@ export default function AddItemScreen() {
   };
 
   const uploadReceipt = async () => {
-    if (!selectedReceipt || !householdId || !userId) return;
+    if (!householdId || !userId) return;
+    
+    if (receiptMode === 'upload' && !selectedReceipt) return;
+    if (receiptMode === 'url' && !receiptUrl.trim()) return;
+    // Gmail mode doesn't need any input validation
+    
     setIsUploading(true);
     setUploadError(null);
 
     try {
-      const formData = new FormData();
-      const fileName = selectedReceipt.fileName ?? `receipt-${Date.now()}.jpg`;
-      const mimeType = selectedReceipt.mimeType ?? 'image/jpeg';
-      if (Platform.OS === 'web') {
-        const response = await fetch(selectedReceipt.uri);
-        const blob = await response.blob();
-        const file = new File([blob], fileName, { type: mimeType });
-        formData.append('receipt', file);
-      } else {
-        formData.append('receipt', {
-          uri: selectedReceipt.uri,
-          name: fileName,
-          type: mimeType,
-        } as any);
-      }
-
-      const res = await fetch(
-        `${API_BASE_URL}/households/${householdId}/receipts`,
-        {
-          method: 'POST',
-          headers: {
-            'x-user-id': userId,
-            'x-household-id': householdId,
+      if (receiptMode === 'gmail') {
+        // Process receipt from Gmail
+        const res = await fetch(
+          `${API_BASE_URL}/households/${householdId}/receipts/from-gmail`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': userId,
+              'x-household-id': householdId,
+            },
           },
-          body: formData,
-        },
-      );
+        );
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err?.error || 'Failed to upload receipt.');
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error || 'Failed to process Gmail receipt.');
+        }
+      } else if (receiptMode === 'url') {
+        // Process receipt from URL
+        const res = await fetch(
+          `${API_BASE_URL}/households/${householdId}/receipts/from-url`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': userId,
+              'x-household-id': householdId,
+            },
+            body: JSON.stringify({ receiptUrl: receiptUrl.trim() }),
+          },
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error || 'Failed to process receipt URL.');
+        }
+      } else {
+        // Upload receipt file
+        const formData = new FormData();
+        const fileName = selectedReceipt!.fileName ?? `receipt-${Date.now()}.jpg`;
+        const mimeType = selectedReceipt!.mimeType ?? 'image/jpeg';
+        if (Platform.OS === 'web') {
+          const response = await fetch(selectedReceipt!.uri);
+          const blob = await response.blob();
+          const file = new File([blob], fileName, { type: mimeType });
+          formData.append('receipt', file);
+        } else {
+          formData.append('receipt', {
+            uri: selectedReceipt!.uri,
+            name: fileName,
+            type: mimeType,
+          } as any);
+        }
+
+        const res = await fetch(
+          `${API_BASE_URL}/households/${householdId}/receipts`,
+          {
+            method: 'POST',
+            headers: {
+              'x-user-id': userId,
+              'x-household-id': householdId,
+            },
+            body: formData,
+          },
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error || 'Failed to upload receipt.');
+        }
       }
 
       await refreshData();
-      Alert.alert('Receipt processed', 'Items have been added to your fridge.');
-      router.back();
+      setIsNavigating(true);
+      Alert.alert('Receipt processed', 'Items have been added to your fridge.', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setIsNavigating(false);
+            router.replace('/(tabs)/fridge');
+          },
+        },
+      ]);
+      // Fallback navigation if alert doesn't work
+      setTimeout(() => {
+        if (isNavigating) {
+          router.replace('/(tabs)/fridge');
+        }
+      }, 100);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed.';
       setUploadError(message);
@@ -173,7 +235,7 @@ export default function AddItemScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.replace('/(tabs)/fridge')}
             style={styles.backButton}
           >
             <MaterialCommunityIcons
@@ -331,20 +393,96 @@ export default function AddItemScreen() {
 
         {activeTab === 'receipt' && (
           <View style={styles.form}>
-            <Text style={Typography.subHeader}>Upload a receipt</Text>
+            <Text style={Typography.subHeader}>Scan a receipt</Text>
             <Text style={Typography.body}>
               We will scan the receipt and add items to your fridge.
             </Text>
-            <TouchableOpacity style={styles.secondaryButton} onPress={pickReceipt}>
-              <Text style={styles.secondaryButtonText}>
-                {selectedReceipt ? 'Change receipt' : 'Choose receipt'}
-              </Text>
-            </TouchableOpacity>
-            {selectedReceipt && (
-              <Text style={styles.receiptName}>
-                Selected: {selectedReceipt.fileName ?? selectedReceipt.uri.split('/').pop()}
-              </Text>
+            
+            {/* Receipt Mode Toggle */}
+            <View style={styles.receiptModeToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.receiptModeButton,
+                  receiptMode === 'upload' && styles.receiptModeButtonActive,
+                ]}
+                onPress={() => setReceiptMode('upload')}
+              >
+                <Text
+                  style={[
+                    styles.receiptModeText,
+                    receiptMode === 'upload' && styles.receiptModeTextActive,
+                  ]}
+                >
+                  Upload
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.receiptModeButton,
+                  receiptMode === 'url' && styles.receiptModeButtonActive,
+                ]}
+                onPress={() => setReceiptMode('url')}
+              >
+                <Text
+                  style={[
+                    styles.receiptModeText,
+                    receiptMode === 'url' && styles.receiptModeTextActive,
+                  ]}
+                >
+                  URL
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.receiptModeButton,
+                  receiptMode === 'gmail' && styles.receiptModeButtonActive,
+                ]}
+                onPress={() => setReceiptMode('gmail')}
+              >
+                <Text
+                  style={[
+                    styles.receiptModeText,
+                    receiptMode === 'gmail' && styles.receiptModeTextActive,
+                  ]}
+                >
+                  Gmail
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {receiptMode === 'upload' ? (
+              <>
+                <TouchableOpacity style={styles.secondaryButton} onPress={pickReceipt}>
+                  <Text style={styles.secondaryButtonText}>
+                    {selectedReceipt ? 'Change receipt' : 'Choose receipt'}
+                  </Text>
+                </TouchableOpacity>
+                {selectedReceipt && (
+                  <Text style={styles.receiptName}>
+                    Selected: {selectedReceipt.fileName ?? selectedReceipt.uri.split('/').pop()}
+                  </Text>
+                )}
+              </>
+            ) : receiptMode === 'url' ? (
+              <>
+                <Text style={Typography.label}>Receipt Image URL</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="https://example.com/receipt.jpg"
+                  value={receiptUrl}
+                  onChangeText={setReceiptUrl}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+              </>
+            ) : (
+              <>
+                <Text style={[Typography.body, { textAlign: 'center', marginVertical: Spacing.l, color: Colors.light.textSecondary }]}>
+                  Process the most recent receipt from your linked Gmail account
+                </Text>
+              </>
             )}
+            
             {uploadError && <Text style={styles.errorText}>{uploadError}</Text>}
           </View>
         )}
@@ -361,12 +499,21 @@ export default function AddItemScreen() {
       {activeTab === 'receipt' && (
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.submitButton, isUploading && styles.disabledButton]}
+            style={[
+              styles.submitButton,
+              (isUploading || 
+               (receiptMode === 'upload' && !selectedReceipt) || 
+               (receiptMode === 'url' && !receiptUrl.trim())) && styles.disabledButton
+            ]}
             onPress={uploadReceipt}
-            disabled={isUploading || !selectedReceipt}
+            disabled={
+              isUploading || 
+              (receiptMode === 'upload' && !selectedReceipt) || 
+              (receiptMode === 'url' && !receiptUrl.trim())
+            }
           >
             <Text style={styles.submitButtonText}>
-              {isUploading ? 'Uploading...' : 'Upload Receipt'}
+              {isUploading ? 'Processing...' : receiptMode === 'gmail' ? 'Process Gmail Receipt' : 'Process Receipt'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -543,5 +690,29 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.6,
+  },
+  receiptModeToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.light.secondary,
+    borderRadius: BorderRadius.m,
+    padding: 4,
+  },
+  receiptModeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: BorderRadius.s,
+  },
+  receiptModeButtonActive: {
+    backgroundColor: Colors.light.card,
+    ...Shadows.soft,
+  },
+  receiptModeText: {
+    fontWeight: '600',
+    color: Colors.light.textSecondary,
+    fontSize: 13,
+  },
+  receiptModeTextActive: {
+    color: Colors.light.text,
   },
 });

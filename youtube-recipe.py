@@ -85,6 +85,15 @@ def extract_recipe_from_logs(run_response):
     logs = run_response.get("log", [])
     extracted_data = {}
     
+    def clean_value(value):
+        """Replace 'Unknown' or 'N/A' with empty string"""
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned.lower() in ['unknown', 'n/a', 'na']:
+                return ""
+            return cleaned
+        return value
+    
     # Parse log entries for extracted data
     for log_entry in logs:
         if "__standard__: Key item" in log_entry and "extracted successfully:" in log_entry:
@@ -92,77 +101,98 @@ def extract_recipe_from_logs(run_response):
             match = re.match(r"__standard__: Key item '([^']+)' extracted successfully: (.+)", log_entry, re.DOTALL)
             if match:
                 key = match.group(1)
-                value = match.group(2).strip()
+                value = clean_value(match.group(2))
                 extracted_data[key] = value
     
     # Build clean recipe JSON according to schema
     recipe = {}
     
-    # Basic string fields
-    if "name" in extracted_data:
+    # Basic string fields - only add if not empty after cleaning
+    if "name" in extracted_data and extracted_data["name"]:
         recipe["name"] = extracted_data["name"]
     
-    if "description" in extracted_data:
+    if "description" in extracted_data and extracted_data["description"]:
         recipe["description"] = extracted_data["description"]
     
-    if "imageUrl" in extracted_data:
+    if "imageUrl" in extracted_data and extracted_data["imageUrl"]:
         recipe["imageUrl"] = extracted_data["imageUrl"]
     
-    if "sourceUrl" in extracted_data:
+    if "sourceUrl" in extracted_data and extracted_data["sourceUrl"]:
         recipe["sourceUrl"] = extracted_data["sourceUrl"]
     
-    if "sourceType" in extracted_data:
+    if "sourceType" in extracted_data and extracted_data["sourceType"]:
         recipe["sourceType"] = extracted_data["sourceType"]
     
     # Numeric fields
-    if "prepTime" in extracted_data:
+    if "prepTime" in extracted_data and extracted_data["prepTime"]:
         try:
             recipe["prepTime"] = int(extracted_data["prepTime"])
         except (ValueError, TypeError):
             pass
     
-    if "cookTime" in extracted_data:
+    if "cookTime" in extracted_data and extracted_data["cookTime"]:
         try:
             recipe["cookTime"] = int(extracted_data["cookTime"])
         except (ValueError, TypeError):
             pass
     
-    if "servings" in extracted_data:
+    if "servings" in extracted_data and extracted_data["servings"]:
         try:
             recipe["servings"] = int(extracted_data["servings"])
         except (ValueError, TypeError):
             pass
     
-    if "difficulty" in extracted_data:
+    if "difficulty" in extracted_data and extracted_data["difficulty"]:
         recipe["difficulty"] = extracted_data["difficulty"]
     
-    if "cuisine" in extracted_data:
+    if "cuisine" in extracted_data and extracted_data["cuisine"]:
         recipe["cuisine"] = extracted_data["cuisine"]
     
     # Array fields - parse JSON strings
-    if "tags" in extracted_data:
+    if "tags" in extracted_data and extracted_data["tags"]:
         try:
-            recipe["tags"] = json.loads(extracted_data["tags"])
+            tags = json.loads(extracted_data["tags"])
+            # Clean tags array - remove empty strings, "Unknown", and "N/A"
+            cleaned_tags = [clean_value(tag) for tag in tags if clean_value(tag)]
+            if cleaned_tags:
+                recipe["tags"] = cleaned_tags
         except json.JSONDecodeError:
             pass
     
-    if "ingredients" in extracted_data:
+    if "ingredients" in extracted_data and extracted_data["ingredients"]:
         try:
             ingredients = json.loads(extracted_data["ingredients"])
-            # Convert quantity strings to numbers where possible
+            # Clean and convert quantity strings
             for ingredient in ingredients:
+                # Clean string fields
+                for key in ["itemId", "unit", "notes"]:
+                    if key in ingredient:
+                        ingredient[key] = clean_value(ingredient[key])
+                
+                # Convert quantity strings to numbers where possible
                 if "quantity" in ingredient and ingredient["quantity"]:
-                    try:
-                        ingredient["quantity"] = float(ingredient["quantity"])
-                    except (ValueError, TypeError):
-                        pass
+                    cleaned_qty = clean_value(str(ingredient["quantity"]))
+                    if cleaned_qty:
+                        try:
+                            ingredient["quantity"] = float(cleaned_qty)
+                        except (ValueError, TypeError):
+                            ingredient["quantity"] = ""
+                    else:
+                        ingredient["quantity"] = ""
             recipe["ingredients"] = ingredients
         except json.JSONDecodeError:
             pass
     
-    if "instructions" in extracted_data:
+    if "instructions" in extracted_data and extracted_data["instructions"]:
         try:
-            recipe["instructions"] = json.loads(extracted_data["instructions"])
+            instructions = json.loads(extracted_data["instructions"])
+            # Clean string fields in instructions
+            for instruction in instructions:
+                if "instruction" in instruction:
+                    instruction["instruction"] = clean_value(instruction["instruction"])
+                if "imageUrl" in instruction:
+                    instruction["imageUrl"] = clean_value(instruction["imageUrl"])
+            recipe["instructions"] = instructions
         except json.JSONDecodeError:
             pass
     

@@ -29,6 +29,7 @@ export default function ItemNameAutocomplete({
 }: Props) {
   const { userId, householdId } = useApp();
   const [remoteItems, setRemoteItems] = useState<Suggestion[]>([]);
+  const [isFocused, setIsFocused] = useState(false);
 
   const getAuthHeaders = () => {
     const headers: Record<string, string> = {};
@@ -84,8 +85,13 @@ export default function ItemNameAutocomplete({
     return remoteItems.some((item) => item.name.toLowerCase() === query);
   }, [value, remoteItems]);
 
+  const showSuggestions =
+    isFocused &&
+    (filteredSuggestions.length > 0 ||
+      (showCreate && !hasExactMatch && value.trim()));
+
   return (
-    <View>
+    <View style={styles.wrapper}>
       <TextInput
         style={[styles.input, inputStyle]}
         placeholder={placeholder}
@@ -93,8 +99,10 @@ export default function ItemNameAutocomplete({
         value={value}
         onChangeText={onChangeText}
         autoFocus={autoFocus}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setTimeout(() => setIsFocused(false), 150)}
       />
-      {(filteredSuggestions.length > 0 || (showCreate && !hasExactMatch && value.trim())) && (
+      {showSuggestions && (
         <View style={styles.suggestionBox}>
           {filteredSuggestions.slice(0, 6).map((item) => (
             <TouchableOpacity
@@ -103,6 +111,7 @@ export default function ItemNameAutocomplete({
               onPress={() => {
                 onSelectItem?.(item);
                 onChangeText(item.name);
+                setIsFocused(false);
               }}
             >
               <Text style={styles.suggestionText}>{item.name}</Text>
@@ -111,7 +120,10 @@ export default function ItemNameAutocomplete({
           {showCreate && !hasExactMatch && value.trim() && (
             <TouchableOpacity
               style={[styles.suggestionItem, styles.suggestionCreate]}
-              onPress={() => onCreate?.(value.trim())}
+              onPress={() => {
+                onCreate?.(value.trim());
+                setIsFocused(false);
+              }}
             >
               <Text style={styles.suggestionCreateText}>
                 Create "{value.trim()}"
@@ -125,6 +137,10 @@ export default function ItemNameAutocomplete({
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    position: 'relative',
+    zIndex: 2,
+  },
   input: {
     backgroundColor: Colors.light.card,
     borderRadius: BorderRadius.m,
@@ -140,12 +156,22 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   suggestionBox: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: Colors.light.card,
     borderWidth: 1,
     borderColor: Colors.light.border,
     borderRadius: BorderRadius.s,
-    marginTop: 8,
+    marginTop: 6,
     overflow: 'hidden',
+    zIndex: 10,
+    elevation: 6,
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   suggestionItem: {
     paddingVertical: 8,

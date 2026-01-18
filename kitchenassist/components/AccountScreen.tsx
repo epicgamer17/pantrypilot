@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Switch } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Switch, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 
-import { BorderRadius, Colors, Shadows, Spacing, Typography } from '@/constants/theme';
+import { BorderRadius, Colors, Layout, Spacing, Typography } from '@/constants/theme';
+import { SurfaceCard } from '@/components/ui/SurfaceCard';
 import CreateHouseholdModal from '@/components/CreateHouseholdModal';
 import EditHouseholdModal from '@/components/EditHouseholdModal';
 import { API_BASE_URL, AUTH0_CLIENT_ID, AUTH0_DOMAIN } from '@/constants/auth0';
@@ -15,6 +16,9 @@ WebBrowser.maybeCompleteAuthSession();
 
 export default function AccountScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 980;
+  const shellWidth = Math.min(width - Spacing.xl * 2, Layout.pageMaxWidth);
 
   const { setHouseholdId, setHouseholdInfo, householdInfo, householdId } = useApp();
   const { userId: authUserId, setHasHousehold, signIn, hasHousehold } = useAuth();
@@ -328,129 +332,139 @@ export default function AccountScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={Typography.header}>Account</Text>
-      <Text style={Typography.body}>Manage your household and connected services.</Text>
-
-      <View style={styles.card}>
-        <Text style={Typography.subHeader}>Connected services</Text>
-        <Text style={Typography.body}>
-          Optional. You can opt in to Gmail read-only access.
-        </Text>
-        <View style={styles.gmailToggleRow}>
-          <View style={styles.gmailToggleText}>
-            <Text style={Typography.body}>Gmail read-only</Text>
-            <Text style={styles.gmailToggleHint}>
-              Allows us to read Gmail metadata when you opt in.
-            </Text>
-            <Text style={styles.gmailToggleHint}>
-              Disconnecting requires revoking access in your Google account settings.
-            </Text>
-          </View>
-          <Switch
-            value={gmailOptIn}
-            onValueChange={handleGmailToggle}
-            disabled={isGmailUpdating}
-          />
+      <View style={[styles.shell, { width: shellWidth }, isWide && styles.shellWide]}>
+        <View style={styles.headerBlock}>
+          <Text style={Typography.header}>Account</Text>
+          <Text style={Typography.body}>Manage your household and connected services.</Text>
         </View>
-        {gmailError ? <Text style={styles.errorText}>{gmailError}</Text> : null}
-      </View>
 
-      <View style={styles.card}>
-        <Text style={Typography.subHeader}>Household</Text>
-        <Text style={Typography.body}>
-          {hasHousehold
-            ? (householdInfo?.name ? householdInfo.name : 'Household linked')
-            : 'Not connected to a household yet.'}
-        </Text>
-        {hasHousehold && householdInfo?.inviteCode ? (
-          <Text style={styles.detailText}>
-            Invite code: {householdInfo.inviteCode}
-          </Text>
-        ) : null}
-        {hasHousehold ? (
-          <Text style={styles.detailText}>
-            Location: {formatLocation() ?? 'Not set'}
-          </Text>
-        ) : null}
-        {hasHousehold ? (
-          <Text style={styles.detailText}>
-            Members: {isMembersLoading ? 'Loading...' : formatMembers()}
-          </Text>
-        ) : null}
-        {hasHousehold ? (
-          <TouchableOpacity
-            style={[styles.dangerButton, isLeaving && styles.disabledButton]}
-            onPress={handleLeaveHousehold}
-            disabled={isLeaving}
-          >
-            <Text style={styles.buttonText}>
-              {isLeaving ? 'Leaving...' : 'Leave household'}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        {membersError ? <Text style={styles.errorText}>{membersError}</Text> : null}
-        {leaveError ? <Text style={styles.errorText}>{leaveError}</Text> : null}
-      </View>
+        <View style={[styles.columns, isWide && styles.columnsWide]}>
+          <View style={styles.column}>
+            <SurfaceCard style={styles.card} variant="soft">
+              <Text style={Typography.subHeader}>Connected services</Text>
+              <Text style={Typography.body}>
+                Optional. You can opt in to Gmail read-only access.
+              </Text>
+              <View style={styles.gmailToggleRow}>
+                <View style={styles.gmailToggleText}>
+                  <Text style={Typography.body}>Gmail read-only</Text>
+                  <Text style={styles.gmailToggleHint}>
+                    Allows us to read Gmail metadata when you opt in.
+                  </Text>
+                  <Text style={styles.gmailToggleHint}>
+                    Disconnecting requires revoking access in your Google account settings.
+                  </Text>
+                </View>
+                <Switch
+                  value={gmailOptIn}
+                  onValueChange={handleGmailToggle}
+                  disabled={isGmailUpdating}
+                />
+              </View>
+              {gmailError ? <Text style={styles.errorText}>{gmailError}</Text> : null}
+            </SurfaceCard>
 
-      <View style={styles.card}>
-        <Text style={Typography.subHeader}>Create</Text>
-        <Text style={Typography.body}>
-          Start a new household and invite others with a code.
-        </Text>
-        {hasHousehold ? (
-          <Text style={styles.helperText}>
-            You already belong to a household.
-          </Text>
-        ) : null}
-        <TouchableOpacity
-          style={[styles.primaryButton, hasHousehold && styles.disabledButton]}
-          onPress={() => setShowCreateModal(true)}
-          disabled={hasHousehold}
-        >
-          <Text style={styles.buttonText}>Create household</Text>
-        </TouchableOpacity>
-      </View>
+            <SurfaceCard style={styles.card} variant="soft">
+              <Text style={Typography.subHeader}>Household</Text>
+              <Text style={Typography.body}>
+                {hasHousehold
+                  ? (householdInfo?.name ? householdInfo.name : 'Household linked')
+                  : 'Not connected to a household yet.'}
+              </Text>
+              {hasHousehold && householdInfo?.inviteCode ? (
+                <Text style={styles.detailText}>
+                  Invite code: {householdInfo.inviteCode}
+                </Text>
+              ) : null}
+              {hasHousehold ? (
+                <Text style={styles.detailText}>
+                  Location: {formatLocation() ?? 'Not set'}
+                </Text>
+              ) : null}
+              {hasHousehold ? (
+                <Text style={styles.detailText}>
+                  Members: {isMembersLoading ? 'Loading...' : formatMembers()}
+                </Text>
+              ) : null}
+              {hasHousehold ? (
+                <TouchableOpacity
+                  style={[styles.dangerButton, isLeaving && styles.disabledButton]}
+                  onPress={handleLeaveHousehold}
+                  disabled={isLeaving}
+                >
+                  <Text style={styles.buttonText}>
+                    {isLeaving ? 'Leaving...' : 'Leave household'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {membersError ? <Text style={styles.errorText}>{membersError}</Text> : null}
+              {leaveError ? <Text style={styles.errorText}>{leaveError}</Text> : null}
+            </SurfaceCard>
+          </View>
 
-      <View style={styles.card}>
-        <Text style={Typography.subHeader}>Join</Text>
-        {hasHousehold ? (
-          <Text style={styles.helperText}>
-            You already belong to a household.
-          </Text>
-        ) : null}
-        <TextInput
-          placeholder="Invite code"
-          placeholderTextColor={Colors.light.textSecondary}
-          value={inviteCode}
-          onChangeText={setInviteCode}
-          style={styles.input}
-        />
-        <TouchableOpacity
-          style={[
-            styles.secondaryButton,
-            (isJoining || hasHousehold) && styles.disabledButton,
-          ]}
-          onPress={handleJoin}
-          disabled={isJoining || hasHousehold}
-        >
-          <Text style={styles.buttonText}>
-            {isJoining ? 'Joining...' : 'Join household'}
-          </Text>
-        </TouchableOpacity>
-        {joinError ? <Text style={styles.errorText}>{joinError}</Text> : null}
-      </View>
+          <View style={styles.column}>
+            <SurfaceCard style={styles.card} variant="soft">
+              <Text style={Typography.subHeader}>Create</Text>
+              <Text style={Typography.body}>
+                Start a new household and invite others with a code.
+              </Text>
+              {hasHousehold ? (
+                <Text style={styles.helperText}>
+                  You already belong to a household.
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={[styles.primaryButton, hasHousehold && styles.disabledButton]}
+                onPress={() => setShowCreateModal(true)}
+                disabled={hasHousehold}
+              >
+                <Text style={styles.buttonText}>Create household</Text>
+              </TouchableOpacity>
+            </SurfaceCard>
 
-      <View style={styles.card}>
-        <Text style={Typography.subHeader}>Modify</Text>
-        <Text style={Typography.body}>
-          Update your household details like name or location.
-        </Text>
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => setShowEditModal(true)}
-        >
-          <Text style={styles.buttonText}>Modify household</Text>
-        </TouchableOpacity>
+            <SurfaceCard style={styles.card} variant="soft">
+              <Text style={Typography.subHeader}>Join</Text>
+              {hasHousehold ? (
+                <Text style={styles.helperText}>
+                  You already belong to a household.
+                </Text>
+              ) : null}
+              <TextInput
+                placeholder="Invite code"
+                placeholderTextColor={Colors.light.textSecondary}
+                value={inviteCode}
+                onChangeText={setInviteCode}
+                style={styles.input}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.secondaryButton,
+                  (isJoining || hasHousehold) && styles.disabledButton,
+                ]}
+                onPress={handleJoin}
+                disabled={isJoining || hasHousehold}
+              >
+                <Text style={styles.buttonText}>
+                  {isJoining ? 'Joining...' : 'Join household'}
+                </Text>
+              </TouchableOpacity>
+              {joinError ? <Text style={styles.errorText}>{joinError}</Text> : null}
+            </SurfaceCard>
+
+            <SurfaceCard style={styles.card} variant="soft">
+              <Text style={Typography.subHeader}>Modify</Text>
+              <Text style={Typography.body}>
+                Update your household details like name or location.
+              </Text>
+              <TouchableOpacity
+                style={styles.secondaryButton}
+                onPress={() => setShowEditModal(true)}
+              >
+                <Text style={styles.buttonText}>Modify household</Text>
+              </TouchableOpacity>
+            </SurfaceCard>
+          </View>
+        </View>
       </View>
 
       <CreateHouseholdModal
@@ -483,13 +497,32 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
     gap: Spacing.l,
     paddingBottom: Spacing.xl * 2,
+    alignItems: 'center',
+  },
+  shell: {
+    gap: Spacing.l,
+  },
+  shellWide: {
+    gap: Spacing.xl,
+  },
+  headerBlock: {
+    gap: Spacing.xs,
+  },
+  columns: {
+    gap: Spacing.l,
+  },
+  columnsWide: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  column: {
+    flex: 1,
+    gap: Spacing.l,
   },
   card: {
-    backgroundColor: Colors.light.card,
     borderRadius: BorderRadius.l,
     padding: Spacing.l,
     gap: Spacing.s,
-    ...Shadows.default,
   },
   gmailToggleRow: {
     flexDirection: 'row',

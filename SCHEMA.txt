@@ -1,0 +1,259 @@
+KitchenAssist MongoDB Schema (comprehensive, typed)
+
+Types used:
+- ObjectId: MongoDB ObjectId
+- String: UTF-8 string
+- Number: numeric (int or double)
+- Boolean: true/false
+- Date: ISODate
+- Array<T>: list of T
+- GeoPoint: { type: "Point", coordinates: [Number, Number] } (lon, lat)
+
+groceryStores
+- _id: ObjectId
+- name: String
+- seededTag: String
+- location: {
+  address: String,
+  city: String,
+  state: String,
+  zipCode: String,
+  coordinates: GeoPoint
+}
+- phone: String
+- hours: {
+  monday: String,
+  tuesday: String,
+  wednesday: String,
+  thursday: String,
+  friday: String,
+  saturday: String,
+  sunday: String
+}
+- createdAt: Date
+- updatedAt: Date
+
+storeInventory
+- _id: ObjectId
+- storeId: ObjectId (ref groceryStores)
+- itemId: ObjectId (ref items)
+- price: Number
+- onSale: Boolean
+- salePrice: Number
+- inStock: Boolean
+- aisle: String
+- lastUpdated: Date
+- priceHistory: Array<{
+  price: Number,
+  date: Date
+}>
+
+items
+- _id: ObjectId
+- name: String
+- category: String
+- subcategory: String
+- brand: String
+- barcode: String
+- packageQuantity: Number
+- packageUnit: String
+- defaultUnit: String
+- nutritionalInfo: {
+  servingSize: Number,
+  servingUnit: String,
+  servingsPerContainer: Number,
+  calories: Number,
+  protein: Number,
+  carbs: Number,
+  fat: Number,
+  saturatedFat: Number,
+  transFat: Number,
+  fiber: Number,
+  sugar: Number,
+  sodium: Number
+}
+- averageShelfLife: Number
+- storageLocation: String
+- imageUrl: String
+- tags: Array<String>
+- createdAt: Date
+- updatedAt: Date
+
+recipes
+- _id: ObjectId
+- name: String
+- description: String
+- imageUrl: String
+- sourceUrl: String
+- sourceType: String
+- prepTime: Number
+- cookTime: Number
+- servings: Number
+- difficulty: String
+- cuisine: String
+- tags: Array<String>
+- ingredients: Array<{
+  itemId: ObjectId (ref items),
+  quantity: Number,
+  unit: String,
+  notes: String,
+  isOptional: Boolean,
+  nutritionalContribution: {
+    calories: Number,
+    protein: Number,
+    carbs: Number,
+    fat: Number,
+    fiber: Number
+  }
+}>
+- instructions: Array<{
+  stepNumber: Number,
+  instruction: String,
+  duration: Number,
+  imageUrl: String
+}>
+- nutritionalInfo: {
+  totalCalories: Number,
+  caloriesPerServing: Number,
+  protein: Number,
+  carbs: Number,
+  fat: Number,
+  fiber: Number,
+  sugar: Number,
+  sodium: Number,
+  lastCalculated: Date
+}
+- createdBy: ObjectId (ref users)
+- isPublic: Boolean
+- rating: Number
+- ratings: Array<{
+  userId: ObjectId (ref users),
+  rating: Number,
+  review: String,
+  createdAt: Date
+}>
+- createdAt: Date
+- updatedAt: Date
+
+households
+- _id: ObjectId
+- name: String
+- seededTag: String
+- inviteCode: String
+- location: {
+  address: String,
+  city: String,
+  state: String,
+  zipCode: String,
+  coordinates: GeoPoint
+}
+- preferredStores: Array<{
+  storeId: ObjectId (ref groceryStores),
+  priority: Number,
+  notes: String
+}>
+- fridgeItems: Array<{
+  _id: ObjectId,
+  itemId: ObjectId (ref items),
+  quantity: Number,
+  unit: String,
+  location: String,
+  purchaseDate: Date,
+  expirationDate: Date,
+  isOpen: Boolean,
+  notes: String,
+  addedBy: ObjectId (ref users),
+  addedAt: Date
+}>
+- shoppingList: Array<{
+  itemId: ObjectId (ref items),
+  quantity: Number,
+  unit: String,
+  priority: String,
+  addedBy: ObjectId (ref users),
+  addedAt: Date,
+  purchased: Boolean,
+  purchasedBy: ObjectId (ref users),
+  purchasedAt: Date,
+  purchasedFrom: ObjectId (ref groceryStores)
+}>
+- savedRecipes: Array<ObjectId> (ref recipes)
+- createdAt: Date
+- updatedAt: Date
+
+users
+- _id: ObjectId
+- email: String
+- auth0UserId: String
+- auth0: {
+  provider: String,
+  emailVerified: Boolean,
+  lastLogin: Date
+}
+- firstName: String
+- lastName: String
+- householdId: ObjectId (ref households)
+- role: String
+- foodPreferences: {
+  dietaryRestrictions: Array<String>,
+  allergies: Array<String>,
+  dislikes: Array<String>,
+  favoriteItems: Array<ObjectId> (ref items),
+  favoriteRecipes: Array<ObjectId> (ref recipes)
+}
+- notificationPreferences: {
+  expirationAlerts: Boolean,
+  lowStockAlerts: Boolean,
+  shoppingListUpdates: Boolean,
+  recipeRecommendations: Boolean
+}
+- createdAt: Date
+- updatedAt: Date
+
+consumptionHistory
+- _id: ObjectId
+- householdId: ObjectId (ref households)
+- itemId: ObjectId (ref items)
+- userId: ObjectId (ref users)
+- quantityConsumed: Number
+- unit: String
+- consumptionDate: Date
+- consumptionType: String
+- recipeId: ObjectId (ref recipes)
+- wasteReason: String
+- notes: String
+- originalPurchaseDate: Date
+- daysUntilConsumed: Number
+- createdAt: Date
+
+mealPlans
+- _id: ObjectId
+- householdId: ObjectId (ref households)
+- name: String
+- startDate: Date
+- endDate: Date
+- meals: Array<{
+  date: Date,
+  mealType: String,
+  recipeId: ObjectId (ref recipes),
+  servings: Number,
+  assignedTo: ObjectId (ref users),
+  status: String,
+  notes: String
+}>
+- createdBy: ObjectId (ref users)
+- createdAt: Date
+- updatedAt: Date
+
+images
+- _id: ObjectId
+- filename: String
+- originalName: String
+- path: String
+- mimeType: String
+- size: Number
+- uploadedBy: ObjectId (ref users)
+- householdId: ObjectId (ref households)
+- tags: Array<String>
+- createdAt: Date
+- updatedAt: Date

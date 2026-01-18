@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensions, Modal, TextInput, Platform } from 'react-native';
+import { View, Text, SectionList, StyleSheet, TouchableOpacity, useWindowDimensions, Modal, TextInput, Platform, Linking } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
@@ -443,7 +443,7 @@ export default function GroceryScreen() {
                 />
                 <View style={{ flex: 1, marginLeft: Spacing.m }}>
                   <Text style={[styles.itemName, item.checked && styles.itemChecked]}>
-                    {item.quantity ?? 1}
+                    {Number(((item.quantity ?? 1) as number).toFixed(2))}
                     {formatUnit(item.unit, item.quantity ?? 1)
                       ? ` ${formatUnit(item.unit, item.quantity ?? 1)}`
                       : ''}{' '}
@@ -458,7 +458,7 @@ export default function GroceryScreen() {
                   </Text>
                   {item.targetPrice > 0 && (
                     <Text style={Typography.caption}>
-                      {(item.quantity ?? 1)} x ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
+                      {Number(((item.quantity ?? 1) as number).toFixed(2))} x ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
                     </Text>
                   )}
                   {item.targetPrice === 0 && (
@@ -470,6 +470,27 @@ export default function GroceryScreen() {
                   onPress={() => openEditModal(item)}
                 >
                   <MaterialCommunityIcons name="pencil" size={18} color={Colors.light.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => {
+                    const storeUrl =
+                      item.itemUrl ||
+                      (item.bestStoreName || item.bestStoreItemName
+                        ? `https://www.google.com/search?q=${encodeURIComponent(
+                            `${item.bestStoreName ?? ''} ${item.bestStoreItemName ?? item.name ?? ''}`.trim()
+                          )}`
+                        : undefined);
+                    if (storeUrl) {
+                      Linking.openURL(storeUrl);
+                    }
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name="open-in-new"
+                    size={18}
+                    color={Colors.light.textSecondary}
+                  />
                 </TouchableOpacity>
               </Card>
             )}

@@ -396,6 +396,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                             let estimatedPrice = priceLeader?.price ?? 0;
                             let fallbackStoreName: string | undefined;
                             let fallbackItemName: string | undefined;
+                            let fallbackItemUrl: string | undefined;
                             if ((!priceLeader?.storeName || !estimatedPrice) && fallbackName) {
                                 const fallback = await fetchClosestPriceWithStore(fallbackName);
                                 if (!estimatedPrice) {
@@ -403,6 +404,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 }
                                 fallbackStoreName = fallback.storeName;
                                 fallbackItemName = fallback.itemName;
+                                fallbackItemUrl = fallback.itemUrl;
                             }
                             return {
                                 id: itemId,
@@ -411,6 +413,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                                 aisle: details?.category || 'General',
                                 packageQuantity: details?.packageQuantity,
                                 packageUnit: details?.packageUnit,
+                                itemUrl: details?.itemUrl ?? priceLeader?.itemUrl ?? fallbackItemUrl,
                                 targetPrice: getUnitPrice(
                                     estimatedPrice,
                                     details?.packageQuantity,

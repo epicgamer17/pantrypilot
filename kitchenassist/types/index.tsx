@@ -28,6 +28,7 @@ export interface GroceryItem {
     bestStoreItemName?: string;
     packageQuantity?: number;
     packageUnit?: string;
+    itemUrl?: string;
     aisle?: string;
     onSale?: boolean;
     checked?: boolean;

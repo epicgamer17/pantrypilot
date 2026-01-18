@@ -57,7 +57,7 @@ router.get('/items/lookup', async (req, res) => {
     const items = await db
       .collection('items')
       .find({ _id: { $in: idList.map((id) => new ObjectId(id)) } })
-      .project({ name: 1, category: 1, packageQuantity: 1, packageUnit: 1 })
+      .project({ name: 1, category: 1, packageQuantity: 1, packageUnit: 1, itemUrl: 1 })
       .toArray();
 
     return res.json(
@@ -67,6 +67,7 @@ router.get('/items/lookup', async (req, res) => {
         category: item.category,
         packageQuantity: item.packageQuantity,
         packageUnit: item.packageUnit,
+        itemUrl: item.itemUrl,
       }))
     );
   } catch (err) {

@@ -21,13 +21,13 @@ type GroceryDeps = {
   ) => Promise<{ id: string; name?: string; category?: string } | null>;
   fetchItemsByIds: (
     ids: string[],
-  ) => Promise<Map<string, { packageQuantity?: number; packageUnit?: string }>>;
+  ) => Promise<Map<string, { packageQuantity?: number; packageUnit?: string; itemUrl?: string }>>;
   fetchItemPriceLeaders: (
     ids: string[],
-  ) => Promise<Map<string, { price: number; storeName?: string; itemName?: string }>>;
+  ) => Promise<Map<string, { price: number; storeName?: string; itemName?: string; itemUrl?: string }>>;
   fetchClosestPriceWithStore: (
     name: string,
-  ) => Promise<{ price: number; storeName?: string; itemName?: string }>;
+  ) => Promise<{ price: number; storeName?: string; itemName?: string; itemUrl?: string }>;
   apiUrl: string;
 };
 
@@ -103,17 +103,20 @@ export const createGroceryActions = ({
     let estimatedPrice = price;
     let bestStoreName: string | undefined;
     let bestStoreItemName: string | undefined;
+    let bestStoreItemUrl: string | undefined;
     if (!estimatedPrice) {
       const pricesById = await fetchItemPriceLeaders([resolved.id]);
       const leader = pricesById.get(resolved.id);
       estimatedPrice = leader?.price ?? 0;
       bestStoreName = leader?.storeName;
       bestStoreItemName = leader?.itemName;
+      bestStoreItemUrl = leader?.itemUrl;
       if (!estimatedPrice) {
         const fallback = await fetchClosestPriceWithStore(resolved.name ?? name);
         estimatedPrice = fallback.price;
         bestStoreName = fallback.storeName;
         bestStoreItemName = fallback.itemName;
+        bestStoreItemUrl = fallback.itemUrl;
       }
     }
 
@@ -128,6 +131,7 @@ export const createGroceryActions = ({
       aisle: resolved.category ?? category,
       packageQuantity: details?.packageQuantity,
       packageUnit: details?.packageUnit,
+      itemUrl: details?.itemUrl ?? bestStoreItemUrl,
       targetPrice,
       bestStoreName,
       bestStoreItemName,
@@ -184,17 +188,20 @@ export const createGroceryActions = ({
     let estimatedPrice = item.price ?? 0;
     let bestStoreName: string | undefined;
     let bestStoreItemName: string | undefined;
+    let bestStoreItemUrl: string | undefined;
     if (!estimatedPrice) {
       const pricesById = await fetchItemPriceLeaders([resolved.id]);
       const leader = pricesById.get(resolved.id);
       estimatedPrice = leader?.price ?? 0;
       bestStoreName = leader?.storeName;
       bestStoreItemName = leader?.itemName;
+      bestStoreItemUrl = leader?.itemUrl;
       if (!estimatedPrice) {
         const fallback = await fetchClosestPriceWithStore(resolved.name ?? item.name);
         estimatedPrice = fallback.price;
         bestStoreName = fallback.storeName;
         bestStoreItemName = fallback.itemName;
+        bestStoreItemUrl = fallback.itemUrl;
       }
     }
       additions.push({
@@ -234,6 +241,7 @@ export const createGroceryActions = ({
         ),
         packageQuantity: details?.packageQuantity,
         packageUnit: details?.packageUnit,
+        itemUrl: details?.itemUrl ?? item.itemUrl,
       };
     });
 

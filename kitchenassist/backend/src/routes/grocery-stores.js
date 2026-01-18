@@ -440,6 +440,7 @@ router.get('/grocery-stores/items/prices', async (req, res) => {
         storeId: 1,
         storeName: '$store.name',
         itemName: '$item.name',
+        itemUrl: '$item.itemUrl',
         effectivePrice: 1,
       },
     },

@@ -110,13 +110,7 @@ export default function FridgeScreen() {
     if (!discardItem) return;
     const percent = Number(discardPercent);
     if (!Number.isFinite(percent) || percent <= 0) return;
-    const amount = discardItem.quantity * (percent / 100);
-    const remaining = discardItem.quantity - amount;
-    if (remaining <= 0) {
-      removeFromFridge(discardItem.id, 100);
-    } else {
-      updateFridgeItem({ ...discardItem, quantity: Number(remaining.toFixed(2)) });
-    }
+    removeFromFridge(discardItem.id, percent);
     setDiscardModalVisible(false);
     setDiscardItem(null);
   };

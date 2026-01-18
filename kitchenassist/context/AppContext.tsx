@@ -630,9 +630,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return recentlyDepletedItems.reduce((total, item) => {
             const wastedPercent = item.percentWasted || 0;
             const price = item.purchasePrice || 0;
+            const quantity = item.quantity || 1;
 
             // Calculate money lost on this specific item
-            const moneyLost = price * (wastedPercent / 100);
+            const moneyLost = price * quantity * (wastedPercent / 100);
             return total + moneyLost;
         }, 0);
     };

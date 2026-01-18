@@ -178,7 +178,10 @@ export const createFridgeActions = ({
         `${apiUrl}/households/${householdId}/fridge-items/${id}`,
         {
           method: 'DELETE',
-          headers: getAuthHeaders(),
+          headers: getAuthHeaders(true, householdId),
+          body: JSON.stringify({
+            percentWasted: Number.isFinite(percentWasted) ? percentWasted : 0,
+          }),
         },
       );
       if (!res.ok) throw new Error('Failed to delete item');

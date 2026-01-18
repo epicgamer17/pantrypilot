@@ -704,8 +704,69 @@ router.delete(
     const { householdId, fridgeItemId } = req.params;
     const db = req.app.locals.db;
     const now = new Date();
+    const percentWastedRaw = Number(req.body?.percentWasted ?? 0);
+    const percentWasted =
+      Number.isFinite(percentWastedRaw) && percentWastedRaw > 0
+        ? Math.min(100, Math.max(0, percentWastedRaw))
+        : 0;
+    const userIdHeader = req.headers['x-user-id'];
 
     try {
+      if (percentWasted > 0) {
+        try {
+          const household = await db.collection('households').findOne(
+            {
+              _id: new ObjectId(householdId),
+              'fridgeItems._id': new ObjectId(fridgeItemId),
+            },
+            {
+              projection: {
+                fridgeItems: { $elemMatch: { _id: new ObjectId(fridgeItemId) } },
+              },
+            },
+          );
+          const fridgeItem = household?.fridgeItems?.[0];
+          if (fridgeItem) {
+            const quantity = Number(fridgeItem.quantity ?? 0);
+            const purchasePrice = Number(fridgeItem.purchasePrice ?? 0);
+            const wastedQuantity = Number.isFinite(quantity)
+              ? (quantity * percentWasted) / 100
+              : 0;
+            const wasteCost = Number.isFinite(purchasePrice)
+              ? purchasePrice * wastedQuantity
+              : 0;
+            const userId =
+              typeof userIdHeader === 'string' && ObjectId.isValid(userIdHeader)
+                ? new ObjectId(userIdHeader)
+                : undefined;
+
+            const itemId =
+              fridgeItem.itemId && ObjectId.isValid(fridgeItem.itemId)
+                ? new ObjectId(fridgeItem.itemId)
+                : undefined;
+
+            await db.collection('consumptionHistory').insertOne({
+              householdId: new ObjectId(householdId),
+              itemId,
+              userId,
+              quantityConsumed: wastedQuantity,
+              unit: fridgeItem.unit || 'unit',
+              consumptionDate: now,
+              consumptionType: 'waste',
+              wasteReason: 'user_marked_waste',
+              originalPurchaseDate: fridgeItem.purchaseDate
+                ? new Date(fridgeItem.purchaseDate)
+                : undefined,
+              percentWasted,
+              wasteCost,
+              createdAt: now,
+            });
+          }
+        } catch (error) {
+          console.error('Error recording waste entry:', error);
+        }
+      }
+
       const result = await db.collection('households').updateOne(
         { _id: new ObjectId(householdId) },
         {

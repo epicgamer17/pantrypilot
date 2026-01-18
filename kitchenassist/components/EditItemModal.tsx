@@ -15,13 +15,25 @@ export default function EditItemModal({ visible, item, onClose, onSave }: Props)
     const [qty, setQty] = useState('');
     const [price, setPrice] = useState('');
     const [expiry, setExpiry] = useState('');
+    const formatDateInput = (value?: string) => {
+        if (!value) return '';
+        const parsed = Date.parse(value);
+        if (!Number.isFinite(parsed)) return '';
+        return new Date(parsed).toISOString().split('T')[0];
+    };
+    const normalizeExpiry = (value: string) => {
+        if (!value.trim()) return '';
+        const parsed = Date.parse(value);
+        if (!Number.isFinite(parsed)) return '';
+        return new Date(`${value}T00:00:00`).toISOString();
+    };
 
     useEffect(() => {
         if (item) {
             setName(item.name);
             setQty(item.quantity.toString());
             setPrice(item.purchasePrice.toString());
-            setExpiry(new Date(item.expiryDate).toISOString().split('T')[0]);
+            setExpiry(formatDateInput(item.expiryDate));
         }
     }, [item]);
 
@@ -32,7 +44,7 @@ export default function EditItemModal({ visible, item, onClose, onSave }: Props)
                 name,
                 quantity: parseFloat(qty) || item.quantity,
                 purchasePrice: parseFloat(price) || item.purchasePrice,
-                expiryDate: new Date(expiry).toISOString()
+                expiryDate: normalizeExpiry(expiry),
             });
             onClose();
         }

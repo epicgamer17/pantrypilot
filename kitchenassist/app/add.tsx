@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -54,10 +55,13 @@ export default function AddItemScreen() {
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<Item['unit']>('unit');
   const [category, setCategory] = useState<Category>('Other');
-  const [expiryDate, setExpiryDate] = useState(
-    new Date(Date.now() + 7 * 86400000),
-  );
+  const defaultExpiry = new Date(Date.now() + 7 * 86400000);
+  const [expiryDate, setExpiryDate] = useState(defaultExpiry);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [webCalendarVisible, setWebCalendarVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(
+    new Date(defaultExpiry.getFullYear(), defaultExpiry.getMonth(), 1),
+  );
 
   const handleSubmit = () => {
     if (!name.trim()) {
@@ -160,6 +164,35 @@ export default function AddItemScreen() {
       setExpiryDate(selectedDate);
     }
   };
+
+  const openWebCalendar = () => {
+    setCalendarMonth(new Date(expiryDate.getFullYear(), expiryDate.getMonth(), 1));
+    setWebCalendarVisible(true);
+  };
+
+  const getCalendarWeeks = (monthDate: Date) => {
+    const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+    const daysInMonth = end.getDate();
+    const startWeekday = start.getDay();
+    const days: (Date | null)[] = [];
+    for (let i = 0; i < startWeekday; i += 1) {
+      days.push(null);
+    }
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      days.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), day));
+    }
+    const weeks: (Date | null)[][] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      weeks.push(days.slice(i, i + 7));
+    }
+    return weeks;
+  };
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
 
   return (
     <KeyboardAvoidingView
@@ -303,7 +336,9 @@ export default function AddItemScreen() {
           <Text style={Typography.label}>Expiry Date</Text>
           <TouchableOpacity
             style={styles.dateButton}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() =>
+              Platform.OS === 'web' ? openWebCalendar() : setShowDatePicker(true)
+            }
           >
             <MaterialCommunityIcons
               name="calendar"
@@ -313,7 +348,7 @@ export default function AddItemScreen() {
             <Text style={styles.dateText}>{expiryDate.toDateString()}</Text>
           </TouchableOpacity>
 
-          {(showDatePicker || Platform.OS === 'ios') && (
+          {Platform.OS !== 'web' && (showDatePicker || Platform.OS === 'ios') && (
             <View
               style={Platform.OS === 'ios' ? styles.iosDatePicker : undefined}
             >
@@ -357,6 +392,107 @@ export default function AddItemScreen() {
             <Text style={styles.submitButtonText}>Add to Fridge</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {Platform.OS === 'web' && (
+        <Modal visible={webCalendarVisible} transparent animationType="fade">
+          <View style={styles.calendarOverlay}>
+            <View style={styles.calendarCard}>
+              <View style={styles.calendarHeader}>
+                <TouchableOpacity
+                  style={styles.calendarNavButton}
+                  onPress={() =>
+                    setCalendarMonth(
+                      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
+                    )
+                  }
+                >
+                  <MaterialCommunityIcons name="chevron-left" size={20} color={Colors.light.text} />
+                </TouchableOpacity>
+                <Text style={styles.calendarTitle}>
+                  {calendarMonth.toLocaleDateString('en-US', {
+                    month: 'long',
+                    year: 'numeric',
+                  })}
+                </Text>
+                <TouchableOpacity
+                  style={styles.calendarNavButton}
+                  onPress={() =>
+                    setCalendarMonth(
+                      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
+                    )
+                  }
+                >
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.light.text} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.calendarWeekdays}>
+                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) => (
+                  <Text key={day} style={styles.calendarWeekdayText}>
+                    {day}
+                  </Text>
+                ))}
+              </View>
+
+              <View style={styles.calendarGrid}>
+                {getCalendarWeeks(calendarMonth).map((week, weekIndex) => (
+                  <View key={`week-${weekIndex}`} style={styles.calendarRow}>
+                    {week.map((date, dayIndex) => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const isDisabled = !date || date < today;
+                      const selected = date ? isSameDay(date, expiryDate) : false;
+                      return (
+                        <TouchableOpacity
+                          key={`day-${weekIndex}-${dayIndex}`}
+                          style={[
+                            styles.calendarCell,
+                            selected && styles.calendarCellSelected,
+                            isDisabled && styles.calendarCellDisabled,
+                          ]}
+                          disabled={isDisabled}
+                          onPress={() => {
+                            if (!date) return;
+                            setExpiryDate(date);
+                            setWebCalendarVisible(false);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.calendarCellText,
+                              selected && styles.calendarCellTextSelected,
+                              isDisabled && styles.calendarCellTextDisabled,
+                            ]}
+                          >
+                            {date ? date.getDate() : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.calendarActions}>
+                <TouchableOpacity
+                  style={styles.calendarCancel}
+                  onPress={() => setWebCalendarVisible(false)}
+                >
+                  <Text style={styles.calendarCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.calendarApply}
+                  onPress={() => {
+                    setWebCalendarVisible(false);
+                  }}
+                >
+                  <Text style={styles.calendarApplyText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
       {activeTab === 'receipt' && (
         <View style={styles.footer}>
@@ -498,6 +634,108 @@ const styles = StyleSheet.create({
   iosDatePicker: {
     alignItems: 'center',
     marginTop: Spacing.s,
+  },
+  calendarOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.xl,
+  },
+  calendarCard: {
+    width: 340,
+    backgroundColor: Colors.light.card,
+    borderRadius: BorderRadius.l,
+    padding: Spacing.l,
+    ...Shadows.strong,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.m,
+  },
+  calendarTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  calendarNavButton: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.circle,
+    backgroundColor: Colors.light.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarWeekdays: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.s,
+  },
+  calendarWeekdayText: {
+    width: 36,
+    textAlign: 'center',
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    gap: Spacing.xs,
+  },
+  calendarRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  calendarCell: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.s,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarCellSelected: {
+    backgroundColor: Colors.light.primary,
+  },
+  calendarCellDisabled: {
+    backgroundColor: Colors.light.secondary,
+  },
+  calendarCellText: {
+    color: Colors.light.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  calendarCellTextSelected: {
+    color: 'white',
+  },
+  calendarCellTextDisabled: {
+    color: Colors.light.textMuted,
+  },
+  calendarActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: Spacing.s,
+    marginTop: Spacing.l,
+  },
+  calendarCancel: {
+    paddingVertical: Spacing.s,
+    paddingHorizontal: Spacing.m,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.secondary,
+  },
+  calendarCancelText: {
+    color: Colors.light.textSecondary,
+    fontWeight: '600',
+  },
+  calendarApply: {
+    paddingVertical: Spacing.s,
+    paddingHorizontal: Spacing.m,
+    borderRadius: BorderRadius.m,
+    backgroundColor: Colors.light.primary,
+  },
+  calendarApplyText: {
+    color: 'white',
+    fontWeight: '600',
   },
   footer: {
     position: 'absolute',

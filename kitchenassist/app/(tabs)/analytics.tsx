@@ -3,14 +3,14 @@ import { View, Text, StyleSheet, ScrollView, useWindowDimensions, TouchableOpaci
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import { useApp } from '../../context/AppContext';
 import { Card } from '../../components/ui/Card'; // Import Card
-import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
+import { Colors, Spacing, Typography, BorderRadius } from '../../constants/theme';
 
 export default function AnalyticsScreen() {
-  const { purchaseHistory, calculateTotalWasteCost, recentlyDepletedItems } = useApp();
+  const { purchaseHistory, calculateTotalWasteCost } = useApp();
   const { width } = useWindowDimensions();
-
-  const contentWidth = width > 840 ? 800 : width;
-  const chartWidth = contentWidth - 40;
+  const isCompact = width < 720;
+  const contentWidth = Math.min(width - (isCompact ? Spacing.l * 2 : Spacing.xl * 2), 960);
+  const chartWidth = Math.max(240, contentWidth - 40);
 
   const monthlySpending: { [key: string]: number } = {};
   purchaseHistory.forEach(item => {
@@ -102,8 +102,11 @@ export default function AnalyticsScreen() {
   const pagedPurchases = purchaseEntries.slice(pageStart, pageStart + pageSize);
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={{ alignItems: 'center' }}>
-      <View style={[styles.container, { width: contentWidth }]}>
+    <ScrollView
+      style={styles.page}
+      contentContainerStyle={[styles.pageContent, { alignItems: 'center' }]}
+    >
+      <View style={[styles.container, { width: contentWidth }, isCompact && styles.containerCompact]}>
         <Text style={Typography.header}>Insights</Text>
 
         {/* --- SPENDING TRENDS --- */}
@@ -178,11 +181,11 @@ export default function AnalyticsScreen() {
             <Text style={styles.sectionTitle}>Bulk Buy Opportunities 📦</Text>
             <Text style={Typography.caption}>You buy these often. Size up to save.</Text>
 
-            <ScrollView style={styles.bulkBuyScroll} contentContainerStyle={styles.bulkBuyContent}>
+            <View style={styles.bulkBuyList}>
               {frequentItems.map((item, index) => {
                 const potentialSavings = (item.avgPrice * item.count) * 0.20;
                 return (
-                  <Card key={index} variant="elevated" style={styles.opportunityCardOverride}>
+                  <View key={index} style={styles.opportunityRow}>
                     <View>
                       <Text style={styles.cardTitle}>{item.name}</Text>
                       <Text style={Typography.caption}>Bought {item.count} times recently</Text>
@@ -190,10 +193,10 @@ export default function AnalyticsScreen() {
                     <View style={styles.savingsBadge}>
                       <Text style={styles.savingsText}>Save ~${potentialSavings.toFixed(2)}</Text>
                     </View>
-                  </Card>
+                  </View>
                 );
               })}
-            </ScrollView>
+            </View>
           </View>
         )}
 
@@ -203,9 +206,9 @@ export default function AnalyticsScreen() {
             <Text style={styles.sectionTitle}>Smart Swaps 💸</Text>
             <Text style={Typography.caption}>High cost items found in history</Text>
 
-            <ScrollView style={styles.smartSwapScroll} contentContainerStyle={styles.smartSwapContent}>
+            <View style={styles.smartSwapList}>
               {expensiveItems.map((item) => (
-                <Card key={item.id} variant="elevated" style={styles.swapCardOverride}>
+                <View key={item.id} style={styles.swapRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{item.name}</Text>
                     <Text style={Typography.caption}>Paid ${item.price.toFixed(2)} at {item.store}</Text>
@@ -214,9 +217,9 @@ export default function AnalyticsScreen() {
                     <Text style={styles.suggestionTitle}>Try Generic?</Text>
                     <Text style={styles.suggestionPrice}>Est. ${(item.price * 0.6).toFixed(2)}</Text>
                   </View>
-                </Card>
+                </View>
               ))}
-            </ScrollView>
+            </View>
           </View>
         )}
 
@@ -257,8 +260,8 @@ export default function AnalyticsScreen() {
           <Text style={Typography.caption}>Most recent items you've bought</Text>
 
           {pagedPurchases.length ? (
-            <Card variant="elevated" style={styles.historyCardOverride}>
-              <ScrollView style={styles.historyList} contentContainerStyle={styles.historyContent}>
+            <View style={styles.historyContainer}>
+              <View style={styles.historyList}>
                 {pagedPurchases.map((entry) => {
                   const total = (entry.price || 0) * (entry.quantity || 1);
                   const dateLabel = new Date(entry.date).toLocaleDateString(undefined, {
@@ -277,7 +280,7 @@ export default function AnalyticsScreen() {
                     </View>
                   );
                 })}
-              </ScrollView>
+              </View>
               {purchaseEntries.length > pageSize && (
                 <View style={styles.paginationRow}>
                   <Text style={styles.paginationText}>
@@ -307,7 +310,7 @@ export default function AnalyticsScreen() {
                   </View>
                 </View>
               )}
-            </Card>
+            </View>
           ) : (
             <Text style={styles.historyEmpty}>No purchases recorded yet.</Text>
           )}
@@ -329,11 +332,23 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: Colors.light.background },
+  pageContent: { paddingBottom: Spacing.xxl },
   container: { padding: Spacing.xl, paddingTop: 60 },
+  containerCompact: { padding: Spacing.l, paddingTop: 32 },
   section: { marginBottom: Spacing.xxl, width: '100%' },
   sectionTitle: { ...Typography.subHeader, marginBottom: Spacing.xs },
 
-  insightAlert: { marginTop: Spacing.l, fontSize: 14, color: Colors.light.text, backgroundColor: Colors.light.secondary, padding: Spacing.m, borderRadius: BorderRadius.s, overflow: 'hidden' },
+  insightAlert: {
+    marginTop: Spacing.l,
+    fontSize: 14,
+    color: Colors.light.text,
+    backgroundColor: Colors.light.infoBg,
+    padding: Spacing.m,
+    borderRadius: BorderRadius.s,
+    borderWidth: 1,
+    borderColor: Colors.light.info,
+    overflow: 'hidden',
+  },
 
   // --- CARD OVERRIDES ---
   // We use Card for base styles, but override specific layout/padding needs here
@@ -344,40 +359,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  opportunityCardOverride: {
+  opportunityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.s,
-    borderLeftWidth: 5,
-    borderLeftColor: Colors.light.success
+    paddingVertical: Spacing.m,
+    paddingHorizontal: Spacing.s,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
-  bulkBuyScroll: {
-    maxHeight: 220,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    borderRadius: BorderRadius.m,
-    backgroundColor: Colors.light.secondary,
-    padding: Spacing.s,
+  bulkBuyList: {
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
   },
-  bulkBuyContent: {
-    paddingBottom: Spacing.s,
-  },
-  smartSwapScroll: {
-    maxHeight: 220,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    borderRadius: BorderRadius.m,
-    backgroundColor: Colors.light.secondary,
-    padding: Spacing.s,
-  },
-  smartSwapContent: {
-    paddingBottom: Spacing.s,
+  smartSwapList: {
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
   },
 
-  swapCardOverride: {
+  swapRow: {
     flexDirection: 'row',
-    marginBottom: Spacing.s,
-    alignItems: 'center'
+    alignItems: 'center',
+    paddingVertical: Spacing.m,
+    paddingHorizontal: Spacing.s,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
   },
 
   tableCardOverride: {
@@ -388,7 +395,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.dangerBg,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ffcdd2'
+    borderColor: Colors.light.danger,
   },
 
   // --- INTERNAL COMPONENT STYLES ---
@@ -404,20 +411,13 @@ const styles = StyleSheet.create({
   tableRow: { flexDirection: 'row', paddingVertical: Spacing.m, borderBottomWidth: 1, borderBottomColor: Colors.light.background },
   tableCell: { flex: 1, textAlign: 'center', fontSize: 15, color: Colors.light.text },
 
-  historyCardOverride: {
-    padding: Spacing.s,
-    height: 360,
+  historyContainer: {
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.border,
   },
   historyList: {
-    flexGrow: 0,
-    borderWidth: 1,
-    borderColor: Colors.light.border,
-    borderRadius: BorderRadius.m,
-    backgroundColor: Colors.light.secondary,
-    padding: Spacing.s,
-  },
-  historyContent: {
-    paddingBottom: Spacing.s,
+    paddingTop: Spacing.xs,
   },
   historyRow: {
     flexDirection: 'row',
@@ -467,5 +467,5 @@ const styles = StyleSheet.create({
   },
 
   wasteMoney: { fontSize: 40, fontWeight: 'bold', color: Colors.light.danger },
-  wasteLabel: { color: '#b71c1c', fontWeight: '600', marginTop: 5 }
+  wasteLabel: { color: Colors.light.danger, fontWeight: '600', marginTop: 5 }
 });

@@ -71,6 +71,9 @@ export default function RecipesScreen() {
     const [publicRecipes, setPublicRecipes] = useState<Recipe[]>([]);
     const [loadingPublic, setLoadingPublic] = useState(false);
     const [prices, setPrices] = useState<Map<string, number>>(new Map());
+    const [itemDetails, setItemDetails] = useState<Map<string, { packageQuantity?: number; packageUnit?: string }>>(
+        new Map()
+    );
 
     // Form State
     const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
@@ -159,10 +162,20 @@ export default function RecipesScreen() {
             if (itemIds.length === 0) return;
 
             try {
-                const priceMap = await fetchItemPrices(API_URL, getAuthHeaders, userId, itemIds);
+                const [priceMap, itemsById] = await Promise.all([
+                    fetchItemPrices(API_URL, getAuthHeaders, userId, itemIds),
+                    fetchItemsByIds(API_URL, getAuthHeaders, userId, itemIds),
+                ]);
                 setPrices(prev => {
                     const next = new Map(prev);
                     priceMap.forEach((v, k) => next.set(k, v));
+                    return next;
+                });
+                setItemDetails(prev => {
+                    const next = new Map(prev);
+                    itemsById.forEach((v, k) => {
+                        next.set(k, { packageQuantity: v.packageQuantity, packageUnit: v.packageUnit });
+                    });
                     return next;
                 });
             } catch (error) {
@@ -255,8 +268,12 @@ export default function RecipesScreen() {
             // Calculate Cost
             if (ing.itemId && prices.has(ing.itemId)) {
                 const unitPrice = prices.get(ing.itemId) || 0;
-                const qty = Number(ing.quantity ?? 1);
-                totalCost += unitPrice * (Number.isFinite(qty) ? qty : 1);
+                const itemDetail = itemDetails.get(ing.itemId);
+                const recipeQty = Number(ing.quantity ?? 1);
+                const itemQty = Number(itemDetail?.packageQuantity ?? 1);
+                const safeRecipeQty = Number.isFinite(recipeQty) ? recipeQty : 1;
+                const safeItemQty = Number.isFinite(itemQty) && itemQty > 0 ? itemQty : 1;
+                totalCost += (safeRecipeQty / safeItemQty) * unitPrice;
             }
 
             // Check Fridge

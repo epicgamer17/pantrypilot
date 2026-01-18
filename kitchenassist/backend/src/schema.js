@@ -143,6 +143,8 @@ const recipeSchema = {
           unit: { bsonType: 'string' },
           notes: { bsonType: 'string' },
           isOptional: { bsonType: 'bool' },
+          packageQuantity: { bsonType: numericBsonTypes },
+          packageUnit: { bsonType: 'string' },
           nutritionalContribution: {
             bsonType: 'object',
             properties: {

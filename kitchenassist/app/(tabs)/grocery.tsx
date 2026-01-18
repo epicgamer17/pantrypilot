@@ -446,8 +446,12 @@ export default function GroceryScreen() {
                       ? ` ${formatUnit(item.unit, item.quantity ?? 1)}`
                       : ''}{' '}
                     {item.name?.toLowerCase()}
-                    {item.bestStoreItemName && item.bestStoreItemName !== item.name
-                      ? ` (${item.bestStoreItemName.toLowerCase()})`
+                    {item.bestStoreItemName
+                      ? ` (${item.bestStoreItemName} ${item.quantity ?? 1}${
+                          formatUnit(item.unit, item.quantity ?? 1)
+                            ? ` ${formatUnit(item.unit, item.quantity ?? 1)}`
+                            : ''
+                        })`
                       : ''}
                   </Text>
                   {item.targetPrice > 0 && (

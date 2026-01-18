@@ -9,14 +9,20 @@ export const fetchItemsByIds = async (
   userId: string | null,
   ids: string[],
 ) => {
-  if (!userId || !ids.length) return new Map<string, { name?: string; category?: string }>();
+  if (!userId || !ids.length) {
+    return new Map<string, { name?: string; category?: string; packageQuantity?: number; packageUnit?: string }>();
+  }
   try {
     const res = await fetch(`${apiUrl}/items/lookup?ids=${ids.join(',')}`, {
       headers: getHeaders(),
     });
-    if (!res.ok) return new Map<string, { name?: string; category?: string }>();
+    if (!res.ok) {
+      return new Map<string, { name?: string; category?: string; packageQuantity?: number; packageUnit?: string }>();
+    }
     const data = await res.json();
-    if (!Array.isArray(data)) return new Map<string, { name?: string; category?: string }>();
+    if (!Array.isArray(data)) {
+      return new Map<string, { name?: string; category?: string; packageQuantity?: number; packageUnit?: string }>();
+    }
     return new Map(
       data.map(
         (item: {
@@ -24,14 +30,21 @@ export const fetchItemsByIds = async (
           _id?: string;
           name?: string;
           category?: string;
+          packageQuantity?: number;
+          packageUnit?: string;
         }) => [
           String(item.id ?? item._id),
-          { name: item.name, category: item.category },
+          {
+            name: item.name,
+            category: item.category,
+            packageQuantity: item.packageQuantity,
+            packageUnit: item.packageUnit,
+          },
         ],
       ),
     );
   } catch (error) {
-    return new Map<string, { name?: string; category?: string }>();
+    return new Map<string, { name?: string; category?: string; packageQuantity?: number; packageUnit?: string }>();
   }
 };
 

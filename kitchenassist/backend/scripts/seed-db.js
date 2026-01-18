@@ -1031,9 +1031,14 @@ async function seed() {
   const normalizeName = (value) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
   const itemIdByName = new Map();
   const itemIdByNormalizedName = new Map();
+  const itemDetailsByNormalizedName = new Map();
   uniqueItems.forEach((item, index) => {
     itemIdByName.set(item.name, itemResult.insertedIds[index]);
     itemIdByNormalizedName.set(normalizeName(item.name), itemResult.insertedIds[index]);
+    itemDetailsByNormalizedName.set(normalizeName(item.name), {
+      packageQuantity: item.packageQuantity,
+      packageUnit: item.packageUnit,
+    });
   });
 
   const inventoryDocs = externalData.map(extItem => {
@@ -1100,6 +1105,10 @@ async function seed() {
       const insertedId = missingInsert.insertedIds[index];
       itemIdByName.set(item.name, insertedId);
       itemIdByNormalizedName.set(normalizeName(item.name), insertedId);
+      itemDetailsByNormalizedName.set(normalizeName(item.name), {
+        packageQuantity: item.packageQuantity,
+        packageUnit: item.packageUnit,
+      });
     });
   }
 
@@ -1112,7 +1121,9 @@ async function seed() {
     isPublic: true,
     tags: recipe.tags,
     ingredients: recipe.ingredients.map(ingredient => {
-      const itemId = itemIdByNormalizedName.get(normalizeName(ingredient.templateName));
+      const normalizedName = normalizeName(ingredient.templateName);
+      const itemId = itemIdByNormalizedName.get(normalizedName);
+      const itemDetails = itemDetailsByNormalizedName.get(normalizedName);
       const base = {
         itemId,
         quantity: ingredient.quantity,
@@ -1122,6 +1133,10 @@ async function seed() {
         ...base,
         ...(ingredient.notes ? { notes: ingredient.notes } : {}),
         ...(typeof ingredient.isOptional === 'boolean' ? { isOptional: ingredient.isOptional } : {}),
+        ...(Number.isFinite(itemDetails?.packageQuantity)
+          ? { packageQuantity: itemDetails.packageQuantity }
+          : {}),
+        ...(itemDetails?.packageUnit ? { packageUnit: itemDetails.packageUnit } : {}),
       };
     }),
     instructions: recipe.instructions,

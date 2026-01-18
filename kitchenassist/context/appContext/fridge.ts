@@ -14,7 +14,9 @@ type FridgeDeps = {
   fridgeItems: Item[];
   setFridgeItems: React.Dispatch<React.SetStateAction<Item[]>>;
   setRecentlyDepletedItems: React.Dispatch<React.SetStateAction<Item[]>>;
-  fetchItemsByIds: (ids: string[]) => Promise<Map<string, { name?: string; category?: string }>>;
+  fetchItemsByIds: (
+    ids: string[]
+  ) => Promise<Map<string, { name?: string; category?: string; packageQuantity?: number; packageUnit?: string }>>;
   apiUrl: string;
   syncHouseholdId: () => Promise<string | null>;
 };

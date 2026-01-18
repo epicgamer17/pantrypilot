@@ -7,6 +7,59 @@ const router = express.Router();
 
 // Helper for MongoDB Driver compatibility
 const getDoc = (result) => (result && result.value) ? result.value : result;
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeSearchTerm = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[()]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const buildItemNamePatterns = (rawQuery) => {
+  const patterns = new Set();
+  const escapedRaw = escapeRegExp(rawQuery);
+  if (escapedRaw) patterns.add(escapedRaw);
+
+  const normalized = normalizeSearchTerm(rawQuery);
+  if (normalized && normalized !== String(rawQuery)) {
+    patterns.add(escapeRegExp(normalized));
+  }
+
+  if (!normalized) {
+    return Array.from(patterns);
+  }
+
+  const includesAny = (values) => values.some((value) => normalized.includes(value));
+
+  if (includesAny(['bean', 'beans'])) {
+    patterns.add('\\b(black|kidney|pinto|navy|cannellini|garbanzo|chickpea|beans?)\\b');
+    if (includesAny(['canned', 'can', 'cans', 'tinned', 'tin'])) {
+      patterns.add('\\b(canned|tinned)\\b.*\\b(black|kidney|pinto|navy|cannellini|garbanzo|chickpea|beans?)\\b');
+    }
+  }
+
+  if (includesAny(['chicken', 'thigh', 'breast', 'wing', 'drum', 'drumstick', 'tender', 'tenders', 'tenderloin'])) {
+    patterns.add('\\b(chicken|thighs?|breasts?|wings?|drumsticks?|tenderloins?|tenders?)\\b');
+  }
+
+  if (includesAny(['beef', 'steak', 'brisket', 'sirloin', 'chuck', 'roast', 'rib', 'ground'])) {
+    patterns.add('\\b(beef|steak|brisket|sirloin|chuck|roast|rib|ground)\\b');
+  }
+
+  if (includesAny(['pork', 'ham', 'bacon', 'loin', 'chop', 'shoulder', 'sausage'])) {
+    patterns.add('\\b(pork|ham|bacon|loin|chops?|shoulder|sausage)\\b');
+  }
+
+  if (includesAny(['vegetable', 'vegetables', 'fruit', 'fruits', 'produce', 'fresh'])) {
+    patterns.add(
+      '\\b(apple|banana|avocado|berries?|grapes?|orange|lemon|lime|tomato|onion|garlic|lettuce|spinach|carrot|cucumber|pepper|broccoli|cauliflower|potato|mushroom|herb|cilantro|parsley|basil|kale|zucchini|celery)\\b'
+    );
+  }
+
+  return Array.from(patterns);
+};
 
 router.post('/grocery-stores', async (req, res) => {
   const { name, location, phone, hours, seededTag } = req.body ?? {};
@@ -155,8 +208,16 @@ router.get('/grocery-stores/items/search', async (req, res) => {
     inventoryMatch.price = { $gte: priceMin, $lte: priceMax };
   }
 
+  const namePatterns = query ? buildItemNamePatterns(String(query)) : [];
+  const nameMatch =
+    namePatterns.length > 1
+      ? { $or: namePatterns.map((pattern) => ({ name: { $regex: pattern, $options: 'i' } })) }
+      : namePatterns.length === 1
+        ? { name: { $regex: namePatterns[0], $options: 'i' } }
+        : {};
+
   const itemMatch = {
-    ...(query ? { name: { $regex: String(query), $options: 'i' } } : {}),
+    ...nameMatch,
     ...(category ? { category: String(category) } : {}),
     ...(subcategory ? { subcategory: String(subcategory) } : {}),
     ...(brand ? { brand: { $regex: String(brand), $options: 'i' } } : {}),

@@ -181,7 +181,9 @@ export default function GroceryScreen() {
   );
 
   const toFridgeItem = (item: any): Omit<Item, 'initialQuantity'> => {
-    const unit = ALLOWED_UNITS.includes(item.unit) ? item.unit : 'unit';
+    const packageQuantity = Number(item.packageQuantity);
+    const packageUnit = item.packageUnit ?? item.unit;
+    const unit = ALLOWED_UNITS.includes(packageUnit) ? packageUnit : 'unit';
     const category =
       CATEGORY_OPTIONS.includes(item.aisle) ? (item.aisle as Category) : 'Other';
     return {
@@ -189,7 +191,7 @@ export default function GroceryScreen() {
       itemId: item.itemId ?? item.id,
       name: item.name,
       category,
-      quantity: item.quantity ?? 1,
+      quantity: Number.isFinite(packageQuantity) && packageQuantity > 0 ? packageQuantity : (item.quantity ?? 1),
       unit,
       purchasePrice: item.targetPrice ?? 0,
       purchaseDate: new Date().toISOString(),

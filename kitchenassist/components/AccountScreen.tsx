@@ -50,6 +50,7 @@ export default function AccountScreen() {
       scopes: ['openid', 'profile', 'email'],
       responseType: AuthSession.ResponseType.Token,
       extraParams: {
+        connection: 'google-oauth2',
         connection_scope: 'https://www.googleapis.com/auth/gmail.readonly',
         prompt: 'consent',
       },
@@ -181,6 +182,36 @@ export default function AccountScreen() {
       result.authentication?.accessToken ?? result.params?.access_token;
     if (!accessToken) {
       setGmailError('Missing access token.');
+      setGmailOptIn(false);
+      setIsGmailUpdating(false);
+      return;
+    }
+
+    try {
+      const profileResponse = await fetch(`https://${AUTH0_DOMAIN}/userinfo`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!profileResponse.ok) {
+        throw new Error('Failed to fetch Auth0 profile.');
+      }
+      const profile = await profileResponse.json();
+      if (!profile?.sub) {
+        throw new Error('Missing Auth0 user id.');
+      }
+
+      const linkResponse = await fetch(`${API_BASE_URL}/users/${userId}/link-google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': userId,
+        },
+        body: JSON.stringify({ googleSub: profile.sub }),
+      });
+      if (!linkResponse.ok) {
+        throw new Error('Failed to link Google account.');
+      }
+    } catch (error) {
+      setGmailError(error instanceof Error ? error.message : 'Failed to link Google account.');
       setGmailOptIn(false);
       setIsGmailUpdating(false);
       return;

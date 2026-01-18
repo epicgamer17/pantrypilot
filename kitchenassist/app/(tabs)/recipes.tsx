@@ -660,81 +660,84 @@ export default function RecipesScreen() {
                     </View>
                 </View>
 
-                {/* Row 2: Centered Action Button */}
-                {viewMode === 'household' && (
-                    <View style={styles.centeredButtonRow}>
-                        <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
-                            <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={handleGeminiCook}
-                            style={[styles.geminiButton, geminiLoading && styles.geminiButtonDisabled]}
-                            disabled={geminiLoading}
-                        >
-                            <LinearGradient
-                                colors={['#2f80ff', '#8a5cff']}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
-                                style={styles.geminiGradient}
+                <View style={styles.headerControlsRow}>
+                    <View style={styles.controlsLeft}>
+                        <View style={styles.filterRow}>
+                            <TouchableOpacity
+                                style={[styles.filterChip, hideAiRecipes && styles.filterChipActive]}
+                                onPress={() => setHideAiRecipes((prev) => !prev)}
                             >
-                                {geminiLoading ? (
-                                    <ActivityIndicator color="white" />
-                                ) : (
-                                    <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
-                                )}
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
-                )}
+                                <Text style={[styles.filterChipText, hideAiRecipes && styles.filterChipTextActive]}>
+                                    Hide AI recipes
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
 
-                <View style={styles.filterRow}>
-                    <TouchableOpacity
-                        style={[styles.filterChip, hideAiRecipes && styles.filterChipActive]}
-                        onPress={() => setHideAiRecipes((prev) => !prev)}
-                    >
-                        <Text style={[styles.filterChipText, hideAiRecipes && styles.filterChipTextActive]}>
-                            Hide AI recipes
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Row 3: Sort Controls */}
-                <View style={styles.sortRow}>
-                    <Text style={styles.sortLabel}>Sort by</Text>
-                    <View style={styles.sortPills}>
-                        <TouchableOpacity
-                            style={[styles.sortPill, sortBy === 'cost' && styles.sortPillActive]}
-                            onPress={() => setSortBy('cost')}
-                        >
-                            <Text style={[styles.sortPillText, sortBy === 'cost' && styles.sortPillTextActive]}>
-                                Price
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.sortPill, sortBy === 'expiry' && styles.sortPillActive]}
-                            onPress={() => setSortBy('expiry')}
-                        >
-                            <Text style={[styles.sortPillText, sortBy === 'expiry' && styles.sortPillTextActive]}>
-                                Expiry
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.sortPill, sortBy === 'missing' && styles.sortPillActive]}
-                            onPress={() => setSortBy('missing')}
-                        >
-                            <Text style={[styles.sortPillText, sortBy === 'missing' && styles.sortPillTextActive]}>
-                                Missing
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.sortPill, sortBy === 'az' && styles.sortPillActive]}
-                            onPress={() => setSortBy('az')}
-                        >
-                            <Text style={[styles.sortPillText, sortBy === 'az' && styles.sortPillTextActive]}>
-                                A-Z
-                            </Text>
-                        </TouchableOpacity>
+                        {/* Sort Controls */}
+                        <View style={styles.sortRow}>
+                            <Text style={styles.sortLabel}>Sort by</Text>
+                            <View style={styles.sortPills}>
+                                <TouchableOpacity
+                                    style={[styles.sortPill, sortBy === 'cost' && styles.sortPillActive]}
+                                    onPress={() => setSortBy('cost')}
+                                >
+                                    <Text style={[styles.sortPillText, sortBy === 'cost' && styles.sortPillTextActive]}>
+                                        Price
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.sortPill, sortBy === 'expiry' && styles.sortPillActive]}
+                                    onPress={() => setSortBy('expiry')}
+                                >
+                                    <Text style={[styles.sortPillText, sortBy === 'expiry' && styles.sortPillTextActive]}>
+                                        Expiry
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.sortPill, sortBy === 'missing' && styles.sortPillActive]}
+                                    onPress={() => setSortBy('missing')}
+                                >
+                                    <Text style={[styles.sortPillText, sortBy === 'missing' && styles.sortPillTextActive]}>
+                                        Missing
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.sortPill, sortBy === 'az' && styles.sortPillActive]}
+                                    onPress={() => setSortBy('az')}
+                                >
+                                    <Text style={[styles.sortPillText, sortBy === 'az' && styles.sortPillTextActive]}>
+                                        A-Z
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                     </View>
+
+                    {viewMode === 'household' && (
+                        <View style={styles.controlsRight}>
+                            <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
+                                <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={handleGeminiCook}
+                                style={[styles.geminiButton, geminiLoading && styles.geminiButtonDisabled]}
+                                disabled={geminiLoading}
+                            >
+                                <LinearGradient
+                                    colors={['#2f80ff', '#8a5cff']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.geminiGradient}
+                                >
+                                    {geminiLoading ? (
+                                        <ActivityIndicator color="white" />
+                                    ) : (
+                                        <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
+                                    )}
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
 
                 <View style={styles.searchRow}>
@@ -1197,12 +1200,15 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         fontSize: 16
     },
-    centeredButtonRow: {
-        alignItems: 'flex-end',
-        gap: 8,
+    headerControlsRow: {
+        flexDirection: 'row',
+        gap: 24,
+        alignItems: 'stretch',
         marginTop: Spacing.m,
     },
-    filterRow: { marginTop: Spacing.s, flexDirection: 'row', justifyContent: 'flex-start' },
+    controlsLeft: { flex: 1 },
+    controlsRight: { alignItems: 'flex-end', justifyContent: 'space-between' },
+    filterRow: { flexDirection: 'row', justifyContent: 'flex-start' },
     filterChip: {
         paddingHorizontal: 12,
         paddingVertical: 6,

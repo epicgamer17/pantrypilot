@@ -1109,6 +1109,7 @@ async function seed() {
     cookTime: recipe.cookTime,
     servings: recipe.servings,
     sourceType: recipe.sourceType,
+    isPublic: true,
     tags: recipe.tags,
     ingredients: recipe.ingredients.map(ingredient => {
       const itemId = itemIdByNormalizedName.get(normalizeName(ingredient.templateName));

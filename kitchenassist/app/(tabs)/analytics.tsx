@@ -6,7 +6,7 @@ import { Card } from '../../components/ui/Card'; // Import Card
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
 
 export default function AnalyticsScreen() {
-  const { purchaseHistory, calculateTotalWasteCost } = useApp();
+  const { purchaseHistory, calculateTotalWasteCost, recentlyDepletedItems } = useApp();
   const { width } = useWindowDimensions();
 
   const contentWidth = width > 840 ? 800 : width;

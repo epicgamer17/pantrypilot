@@ -1,4 +1,5 @@
 import { GroceryItem } from '../../types';
+import { areUnitsCompatible, denormalizeQuantity, normalizeQuantity } from '../../utils/unitConversion';
 
 export const normalizeObjectId = (value: unknown): string | null => {
   if (!value) return null;
@@ -34,9 +35,21 @@ export const dedupeShoppingList = (list: GroceryItem[]) => {
     const existing = map.get(key)!;
     const existingQty = existing.quantity ?? 1;
     const nextQty = item.quantity ?? 1;
+    const existingUnit = existing.unit ?? 'unit';
+    const nextUnit = item.unit ?? existingUnit;
+    let combinedQty = existingQty + nextQty;
+    let combinedUnit = existingUnit;
+
+    if (existingUnit !== nextUnit && areUnitsCompatible(existingUnit, nextUnit)) {
+      const baseExisting = normalizeQuantity(existingQty, existingUnit);
+      const baseNext = normalizeQuantity(nextQty, nextUnit);
+      combinedQty = denormalizeQuantity(baseExisting + baseNext, existingUnit);
+      combinedUnit = existingUnit;
+    }
     map.set(key, {
       ...existing,
-      quantity: existingQty + nextQty,
+      quantity: combinedQty,
+      unit: combinedUnit,
       checked: existing.checked || item.checked,
       purchased: existing.purchased || item.purchased,
     });

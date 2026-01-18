@@ -351,6 +351,23 @@ const consumptionHistorySchema = {
   },
 };
 
+const purchaseHistorySchema = {
+  bsonType: 'object',
+  required: ['householdId', 'itemId', 'userId', 'quantity', 'unit', 'pricePerUnit', 'purchasedAt', 'createdAt'],
+  properties: {
+    householdId: { bsonType: 'objectId' },
+    itemId: { bsonType: 'objectId' },
+    userId: { bsonType: 'objectId' },
+    quantity: { bsonType: numericBsonTypes },
+    unit: { bsonType: 'string' },
+    pricePerUnit: { bsonType: numericBsonTypes },
+    totalPrice: { bsonType: numericBsonTypes },
+    storeName: { bsonType: 'string' },
+    purchasedAt: { bsonType: 'date' },
+    createdAt: { bsonType: 'date' },
+  },
+};
+
 const mealPlanSchema = {
   bsonType: 'object',
   required: ['householdId', 'name', 'startDate', 'endDate', 'createdAt', 'updatedAt'],
@@ -406,6 +423,7 @@ module.exports = {
   householdSchema,
   userSchema,
   consumptionHistorySchema,
+  purchaseHistorySchema,
   mealPlanSchema,
   imageSchema,
 };

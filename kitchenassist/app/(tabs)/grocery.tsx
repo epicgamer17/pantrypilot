@@ -12,7 +12,7 @@ type SortMode = 'aisle' | 'recipe' | 'az';
 
 export default function GroceryScreen() {
   const { width } = useWindowDimensions();
-  const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems } = useApp();
+  const { groceryList, toggleGroceryItem, addToGroceryList, addItemsToGroceryList, updateGroceryItem, clearPurchasedItems, setAllGroceryItemsChecked, addItemsToFridge, fridgeItems, recipes, recentlyDepletedItems, purchaseHistory } = useApp();
   const [sortMode, setSortMode] = useState<SortMode>('aisle');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -27,31 +27,35 @@ export default function GroceryScreen() {
   const [editUnit, setEditUnit] = useState<Item['unit']>('unit');
 
   const CATEGORY_OPTIONS = ['Produce', 'Dairy', 'Meat', 'Pantry', 'Frozen', 'Beverages', 'Other'];
-  const ALLOWED_UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup'];
+  const ALLOWED_UNITS: Item['unit'][] = ['unit', 'g', 'kg', 'ml', 'L', 'oz', 'lb', 'cup', 'ea', 'tbsp', 'tsp', 'clove', 'cloves', 'leaf', 'leaves', 'sprig', 'sprigs'];
 
   // --- QUICK ADD LOGIC ---
 
   // 1. Recently Used (Finished or Binned)
   const recentItems = useMemo(() => {
-    // Combine existing fridge items that might be marked used (legacy) with our new persisted list
-    const candidates = [...fridgeItems.filter(i => i.isUsed), ...recentlyDepletedItems];
+    const candidates = purchaseHistory.length
+      ? purchaseHistory
+      : [...fridgeItems.filter(i => i.isUsed), ...recentlyDepletedItems];
+    const isCooked = (item: { store?: string }) =>
+      item.store?.toLowerCase() === 'cooked';
 
     // Deduplicate by name and sort by most recent interaction (using purchaseDate as proxy timestamp set in removeFromFridge)
     const seen = new Set<string>();
     return candidates
       .filter(i => {
+        if (isCooked(i)) return false;
         if (seen.has(i.name)) return false;
         seen.add(i.name);
         return true;
       })
       .sort((a, b) => {
-        const dateA = a.purchaseDate ? new Date(a.purchaseDate).getTime() : 0;
-        const dateB = b.purchaseDate ? new Date(b.purchaseDate).getTime() : 0;
+        const dateA = a.purchaseDate ? new Date(a.purchaseDate).getTime() : new Date(a.date ?? 0).getTime();
+        const dateB = b.purchaseDate ? new Date(b.purchaseDate).getTime() : new Date(b.date ?? 0).getTime();
         return dateB - dateA;
       })
       .slice(0, 10)
       .filter(i => !groceryList.some(g => g.name === i.name));
-  }, [fridgeItems, groceryList, recentlyDepletedItems]);
+  }, [fridgeItems, groceryList, recentlyDepletedItems, purchaseHistory]);
 
   // 2. Common Staples
   const commonStaples = ['Milk', 'Eggs', 'Bread', 'Cheese', 'Rice', 'Bananas', 'Butter'].filter(
@@ -85,8 +89,11 @@ export default function GroceryScreen() {
 
   const estimatedTotal = useMemo(() => {
     return groceryList.reduce((sum, item) => {
-      const price = item.targetPrice ?? 0;
-      const qty = item.quantity ?? 1;
+      const price = Number(item.targetPrice ?? 0);
+      const qty = Number(item.quantity ?? 1);
+      if (!Number.isFinite(price) || !Number.isFinite(qty)) {
+        return sum;
+      }
       return sum + price * qty;
     }, 0);
   }, [groceryList]);
@@ -218,7 +225,13 @@ export default function GroceryScreen() {
                 <TouchableOpacity
                   key={item.id}
                   style={[styles.chip, styles.chipRecent]}
-                  onPress={() => addToGroceryList(item.name, item.category, item.purchasePrice)}
+                  onPress={() =>
+                    addToGroceryList(
+                      item.name,
+                      item.category,
+                      (item as { price?: number }).price ?? item.purchasePrice,
+                    )
+                  }
                 >
                   <MaterialCommunityIcons name="refresh" size={16} color={Colors.light.text} />
                   <Text style={styles.chipText}>{item.name}</Text>
@@ -283,13 +296,21 @@ export default function GroceryScreen() {
               <Text style={[styles.sortBtnText, sortMode === 'az' && styles.sortBtnTextActive]}>A-Z</Text>
             </TouchableOpacity>
           </View>
-          {hasCheckedItems && (
-            <View style={styles.actionsRow}>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => {
+                setAllGroceryItemsChecked(true);
+              }}
+            >
+              <Text style={styles.clearButtonText}>Select all</Text>
+            </TouchableOpacity>
+            {hasCheckedItems && (
               <TouchableOpacity style={styles.clearButton} onPress={handleClearPurchased}>
                 <Text style={styles.clearButtonText}>Clear purchased</Text>
               </TouchableOpacity>
-            </View>
-          )}
+            )}
+          </View>
 
           {/* MAIN LIST */}
           <SectionList
@@ -330,7 +351,7 @@ export default function GroceryScreen() {
                   </Text>
                   {item.targetPrice > 0 && (
                     <Text style={Typography.caption}>
-                      ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
+                      {(item.quantity ?? 1)} x ${item.targetPrice.toFixed(2)} @ {item.bestStoreName || 'No store found'}
                     </Text>
                   )}
                   {item.targetPrice === 0 && (

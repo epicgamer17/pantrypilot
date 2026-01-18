@@ -14,6 +14,7 @@ type FridgeDeps = {
   fridgeItems: Item[];
   setFridgeItems: React.Dispatch<React.SetStateAction<Item[]>>;
   setRecentlyDepletedItems: React.Dispatch<React.SetStateAction<Item[]>>;
+  fetchItemsByIds: (ids: string[]) => Promise<Map<string, { name?: string; category?: string }>>;
   apiUrl: string;
   syncHouseholdId: () => Promise<string | null>;
 };
@@ -26,6 +27,7 @@ export const createFridgeActions = ({
   fridgeItems,
   setFridgeItems,
   setRecentlyDepletedItems,
+  fetchItemsByIds,
   apiUrl,
   syncHouseholdId,
 }: FridgeDeps) => {
@@ -168,7 +170,32 @@ export const createFridgeActions = ({
     }
   };
 
-  const cookRecipeFromFridge = (recipe: Recipe) => {
+  const cookRecipeFromFridge = async (
+    recipe: Recipe,
+    servingsOverride?: number,
+  ) => {
+    const itemIds = recipe.ingredients
+      .map((ing) => ing.itemId)
+      .filter((id): id is string => !!id);
+    const itemsById = itemIds.length ? await fetchItemsByIds(itemIds) : new Map();
+    const categories = itemIds
+      .map((id) => itemsById.get(id)?.category)
+      .filter((category): category is string => !!category);
+    const categoryCounts = new Map<string, number>();
+    categories.forEach((category) => {
+      categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+    });
+    const mostCommonCategory = Array.from(categoryCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([category]) => category)[0];
+    const hasMeat = categories.includes('Meat');
+    const baseServings = Number(recipe.servings) || 1;
+    const targetServings = Number(servingsOverride) || baseServings;
+    const scale = baseServings > 0 ? targetServings / baseServings : 1;
+    const expiryDays = hasMeat ? 3 : 5;
+    const expiryDate = new Date(Date.now() + expiryDays * 86400000).toISOString();
+
+    let totalCost = 0;
     recipe.ingredients.forEach((ing) => {
       // Prioritize matching by Item ID if available, then fallback to Name
       const fridgeItem = fridgeItems.find((fi) => {
@@ -179,22 +206,53 @@ export const createFridgeActions = ({
         return fi.name.toLowerCase() === ing.name.toLowerCase();
       });
 
-      if (fridgeItem && areUnitsCompatible(fridgeItem.unit, ing.unit)) {
-        const needQty = normalizeQuantity(ing.quantity, ing.unit);
-        const haveQty = normalizeQuantity(fridgeItem.quantity, fridgeItem.unit);
+      const recipeUnit = ing.unit ?? 'unit';
+      const fridgeUnit = fridgeItem?.unit ?? 'unit';
+      if (fridgeItem && areUnitsCompatible(fridgeUnit, recipeUnit)) {
+        const baseQty = Number(ing.quantity);
+        if (!Number.isFinite(baseQty)) {
+          return;
+        }
+        const needQty = normalizeQuantity(baseQty * scale, recipeUnit);
+        const haveQty = normalizeQuantity(fridgeItem.quantity, fridgeUnit);
+        if (!Number.isFinite(needQty) || !Number.isFinite(haveQty)) {
+          return;
+        }
         const remainingBase = haveQty - needQty;
+        let consumedAmount = 0;
 
         if (remainingBase <= 0.01) {
           // If we need more than or exactly what we have, consume the whole item
+          consumedAmount = fridgeItem.quantity;
           consumeItem(fridgeItem.id, fridgeItem.quantity);
         } else {
           // Calculate remaining portion and consume only what was used
           const ratio = remainingBase / haveQty;
           const newQty = fridgeItem.quantity * ratio;
-          const consumedAmount = fridgeItem.quantity - newQty;
+          consumedAmount = fridgeItem.quantity - newQty;
           consumeItem(fridgeItem.id, consumedAmount);
         }
+
+        const unitPrice = fridgeItem.purchasePrice ?? 0;
+        if (Number.isFinite(unitPrice) && Number.isFinite(consumedAmount)) {
+          totalCost += unitPrice * consumedAmount;
+        }
       }
+    });
+
+    const servingUnit = targetServings === 1 ? 'serving' : 'servings';
+    const pricePerServing = targetServings > 0 ? totalCost / targetServings : 0;
+    void addToFridge({
+      id: recipe.id || Math.random().toString(),
+      name: recipe.name,
+      category: 'Leftovers',
+      quantity: targetServings,
+      unit: servingUnit,
+      purchasePrice: pricePerServing,
+      purchaseDate: new Date().toISOString(),
+      expiryDate,
+      store: 'Cooked',
+      isUsed: false,
     });
   };
 

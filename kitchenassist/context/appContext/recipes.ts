@@ -49,6 +49,7 @@ export const createRecipeActions = ({
           ingredients: payloadIngredients,
           householdId: householdId,
           isPublic: (recipe as { isPublic?: boolean }).isPublic,
+          servings: recipe.servings,
         }),
       });
 
@@ -92,6 +93,7 @@ export const createRecipeActions = ({
           ingredients: payloadIngredients,
           householdId: householdId,
           isPublic: (recipe as { isPublic?: boolean }).isPublic,
+          servings: recipe.servings,
         }),
       });
 
@@ -107,5 +109,24 @@ export const createRecipeActions = ({
     }
   };
 
-  return { addRecipe, updateRecipe };
+  const deleteRecipe = async (id: string) => {
+    if (!userId || !householdId) return;
+
+    setRecipes((prev) => prev.filter((recipe) => recipe.id !== id));
+
+    try {
+      const res = await fetch(`${apiUrl}/recipes/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to delete recipe');
+      }
+    } catch (error) {
+      console.error('Error deleting recipe:', error);
+      refreshData();
+    }
+  };
+
+  return { addRecipe, updateRecipe, deleteRecipe };
 };

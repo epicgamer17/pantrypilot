@@ -286,13 +286,61 @@ export const createGroceryActions = ({
     }
   };
 
+  const setAllGroceryItemsChecked = async (checked: boolean) => {
+    if (!userId || !householdId) return;
+    const now = new Date().toISOString();
+    const updatedList = dedupeShoppingList(groceryList).map((item) => ({
+      ...item,
+      checked,
+      purchased: checked,
+      purchasedAt: checked ? (item.purchasedAt ?? now) : undefined,
+      purchasedBy: checked ? (item.purchasedBy ?? userId) : undefined,
+    }));
+
+    const resolvedList = await resolveShoppingListIdsWithItems(updatedList);
+    const dedupedList = dedupeShoppingList(resolvedList);
+    setGroceryList(dedupedList);
+
+    try {
+      await fetch(`${apiUrl}/households/${householdId}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(true),
+        body: JSON.stringify({
+          shoppingList: buildShoppingListPayload(dedupedList, now),
+        }),
+      });
+    } catch (error) {
+      console.error('Error setting all items:', error);
+      refreshData();
+    }
+  };
+
   const clearPurchasedItems = async () => {
     if (!userId || !householdId) return;
-    const remaining = dedupeShoppingList(groceryList).filter((item) => !item.checked);
+    const deduped = dedupeShoppingList(groceryList);
+    const purchasedItems = deduped.filter((item) => item.checked);
+    const remaining = deduped.filter((item) => !item.checked);
     setGroceryList(remaining);
 
     const now = new Date().toISOString();
     try {
+      if (purchasedItems.length) {
+        await fetch(`${apiUrl}/households/${householdId}/purchases`, {
+          method: 'POST',
+          headers: getAuthHeaders(true),
+          body: JSON.stringify({
+            items: purchasedItems.map((item) => ({
+              itemId: item.itemId ?? item.id,
+              quantity: item.quantity ?? 1,
+              unit: item.unit ?? 'unit',
+              pricePerUnit: item.targetPrice ?? 0,
+              storeName: item.bestStoreName,
+              purchasedAt: item.purchasedAt ?? now,
+              userId,
+            })),
+          }),
+        });
+      }
       await fetch(`${apiUrl}/households/${householdId}`, {
         method: 'PATCH',
         headers: getAuthHeaders(true),
@@ -311,6 +359,7 @@ export const createGroceryActions = ({
     addItemsToGroceryList,
     toggleGroceryItem,
     updateGroceryItem,
+    setAllGroceryItemsChecked,
     clearPurchasedItems,
   };
 };

@@ -3,6 +3,7 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, useWindowDimensions
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Slider from '@react-native-community/slider';
 import { useApp } from '../../context/AppContext';
 import { Item } from '../../types';
 import EditItemModal from '../../components/EditItemModal';
@@ -22,6 +23,9 @@ export default function FridgeScreen() {
   const [consumeModalVisible, setConsumeModalVisible] = useState(false);
   const [consumeAmount, setConsumeAmount] = useState('');
   const [activeItem, setActiveItem] = useState<Item | null>(null);
+  const [discardModalVisible, setDiscardModalVisible] = useState(false);
+  const [discardPercent, setDiscardPercent] = useState(0);
+  const [discardItem, setDiscardItem] = useState<Item | null>(null);
 
   const isWeb = Platform.OS === 'web';
 
@@ -54,7 +58,12 @@ export default function FridgeScreen() {
   const renderRightActions = (item: Item, close: () => void) => (
     <TouchableOpacity
       style={styles.deleteAction}
-      onPress={() => { removeFromFridge(item.id, 100); close(); }}
+      onPress={() => {
+        setDiscardItem(item);
+        setDiscardPercent(0);
+        setDiscardModalVisible(true);
+        close();
+      }}
     >
       <MaterialCommunityIcons name="trash-can-outline" size={24} color="white" />
       <Text style={styles.actionText}>Bin</Text>
@@ -83,6 +92,21 @@ export default function FridgeScreen() {
       setConsumeModalVisible(false);
       setActiveItem(null);
     }
+  };
+
+  const confirmDiscard = () => {
+    if (!discardItem) return;
+    const percent = Number(discardPercent);
+    if (!Number.isFinite(percent) || percent <= 0) return;
+    const amount = discardItem.quantity * (percent / 100);
+    const remaining = discardItem.quantity - amount;
+    if (remaining <= 0) {
+      removeFromFridge(discardItem.id, 100);
+    } else {
+      updateFridgeItem({ ...discardItem, quantity: Number(remaining.toFixed(2)) });
+    }
+    setDiscardModalVisible(false);
+    setDiscardItem(null);
   };
 
   const renderCardContent = (item: Item) => {
@@ -126,7 +150,7 @@ export default function FridgeScreen() {
           <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
           <Text style={styles.categoryText}>{item.category}</Text>
           {item.purchasePrice > 0 ? (
-            <Text style={styles.priceText}>${item.purchasePrice.toFixed(2)}</Text>
+            <Text style={styles.priceText}>${(item.purchasePrice * item.quantity).toFixed(2)}</Text>
           ) : (
             <Text style={styles.estimateMissing}>No estimate</Text>
           )}
@@ -134,9 +158,20 @@ export default function FridgeScreen() {
             <Text style={Typography.caption}>
               {item.quantity} / {initial} {item.unit}
             </Text>
-            <View style={styles.qtyBarBg}>
-              <View style={[styles.qtyBarFill, { width: `${qtyProgress * 100}%`, backgroundColor: qtyColor }]} />
-            </View>
+              <Slider
+                style={styles.qtySlider}
+                minimumValue={0}
+                maximumValue={100}
+                step={5}
+                value={qtyProgress * 100}
+                onValueChange={(value) => {
+                  const nextQty = Number(((value / 100) * initial).toFixed(2));
+                  updateFridgeItem({ ...item, quantity: nextQty });
+                }}
+                minimumTrackTintColor={qtyColor}
+                maximumTrackTintColor={Colors.light.background}
+                thumbTintColor={qtyColor}
+              />
           </View>
         </View>
       </View>
@@ -205,7 +240,6 @@ export default function FridgeScreen() {
             const CardBody = (
               <Card
                 variant="elevated"
-                onPress={() => handlePartialEat(item)}
                 onLongPress={() => setEditItem(item)}
                 style={[
                   styles.cardLayoutOverrides,
@@ -218,7 +252,14 @@ export default function FridgeScreen() {
                     <TouchableOpacity style={[styles.webBtn, styles.btnFinish]} onPress={() => removeFromFridge(item.id, 0)}>
                       <Text style={styles.webBtnText}>Finish</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.webBtn, styles.btnTrash]} onPress={() => removeFromFridge(item.id, 100)}>
+                    <TouchableOpacity
+                      style={[styles.webBtn, styles.btnTrash]}
+                      onPress={() => {
+                        setDiscardItem(item);
+                        setDiscardPercent(0);
+                        setDiscardModalVisible(true);
+                      }}
+                    >
                       <Text style={styles.webBtnText}>Bin</Text>
                     </TouchableOpacity>
                   </View>
@@ -269,6 +310,35 @@ export default function FridgeScreen() {
           </View>
         </Modal>
 
+        <Modal visible={discardModalVisible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={Typography.subHeader}>Throw out {discardItem?.name}</Text>
+              <Text style={Typography.body}>How much are you discarding?</Text>
+              <Text style={styles.percentText}>{discardPercent}%</Text>
+              <Slider
+                style={{ width: '100%', height: 40 }}
+                minimumValue={0}
+                maximumValue={100}
+                step={5}
+                value={discardPercent}
+                onValueChange={setDiscardPercent}
+                minimumTrackTintColor={Colors.light.danger}
+                maximumTrackTintColor={Colors.light.textSecondary}
+                thumbTintColor={Colors.light.danger}
+              />
+              <View style={styles.labels}>
+                <Text style={styles.tinyLabel}>0%</Text>
+                <Text style={styles.tinyLabel}>100%</Text>
+              </View>
+              <View style={styles.modalButtons}>
+                <Button title="Cancel" color={Colors.light.textMuted} onPress={() => setDiscardModalVisible(false)} />
+                <Button title="Confirm" color={Colors.light.danger} onPress={confirmDiscard} />
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <EditItemModal visible={!!editItem} item={editItem} onClose={() => setEditItem(null)} onSave={(u) => { updateFridgeItem(u); setEditItem(null); }} />
       </View>
     </GestureHandlerRootView>
@@ -301,8 +371,7 @@ const styles = StyleSheet.create({
   priceText: { fontSize: 12, fontWeight: '600', color: Colors.light.textSecondary, marginBottom: Spacing.xs },
   estimateMissing: { fontSize: 12, color: Colors.light.textMuted, marginBottom: Spacing.xs },
   qtyContainer: { marginTop: 4 },
-  qtyBarBg: { width: '100%', height: 6, backgroundColor: Colors.light.background, borderRadius: 3, marginTop: 4, overflow: 'hidden' },
-  qtyBarFill: { height: '100%', borderRadius: 3 },
+  qtySlider: { width: '100%', height: 20, marginTop: 4 },
   daysText: { fontSize: 12, fontWeight: '700', marginBottom: 4, textAlign: 'right' },
   progressBarBg: { width: 60, height: 4, backgroundColor: Colors.light.background, borderRadius: 2, overflow: 'hidden' },
   progressBarFill: { height: '100%', borderRadius: 2 },
@@ -320,5 +389,8 @@ const styles = StyleSheet.create({
   modalCard: { width: '80%', maxWidth: 400, backgroundColor: 'white', borderRadius: BorderRadius.xl, padding: Spacing.xl, alignItems: 'center', ...Shadows.strong },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.s, marginVertical: Spacing.l },
   modalInput: { fontSize: 32, fontWeight: 'bold', borderBottomWidth: 2, borderColor: Colors.light.border, textAlign: 'center', width: 100, color: Colors.light.primary },
-  modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-around' }
+  modalButtons: { flexDirection: 'row', width: '100%', justifyContent: 'space-around' },
+  percentText: { fontSize: 36, fontWeight: 'bold', color: Colors.light.text, marginTop: Spacing.l },
+  labels: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: Spacing.s },
+  tinyLabel: { ...Typography.caption, fontSize: 12 }
 });

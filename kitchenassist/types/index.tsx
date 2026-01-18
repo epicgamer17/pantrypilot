@@ -1,6 +1,6 @@
 // types/index.tsx
 
-export type Category = 'Dairy' | 'Produce' | 'Meat' | 'Pantry' | 'Snacks' | 'Beverages' | 'Frozen' | 'Bakery' | 'Other';
+export type Category = 'Dairy' | 'Produce' | 'Meat' | 'Pantry' | 'Snacks' | 'Beverages' | 'Frozen' | 'Bakery' | 'Leftovers' | 'Other';
 
 export interface Item {
     id: string;
@@ -10,7 +10,7 @@ export interface Item {
     quantity: number;
     initialQuantity: number;
     // Updated to include all units used in the app
-    unit: 'g' | 'ml' | 'unit' | 'kg' | 'L' | 'oz' | 'lb' | 'cup';
+    unit: 'g' | 'ml' | 'unit' | 'kg' | 'L' | 'oz' | 'lb' | 'cup' | 'ea' | 'tbsp' | 'tsp' | 'clove' | 'cloves' | 'leaf' | 'leaves' | 'sprig' | 'sprigs' | 'serving' | 'servings';
     purchasePrice: number;
     purchaseDate: string;
     expiryDate: string;
@@ -55,6 +55,7 @@ export interface Recipe {
     isAiGenerated?: boolean;
     isPublic?: boolean;
     sourceUrl?: string;
+    servings?: number;
 }
 
 export interface PurchaseRecord {

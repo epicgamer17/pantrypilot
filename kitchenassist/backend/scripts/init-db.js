@@ -8,6 +8,7 @@ const {
   householdSchema,
   userSchema,
   consumptionHistorySchema,
+  purchaseHistorySchema,
   mealPlanSchema,
   imageSchema,
 } = require('../src/schema');
@@ -32,6 +33,7 @@ const collections = [
   { name: 'households', schema: householdSchema },
   { name: 'users', schema: userSchema },
   { name: 'consumptionHistory', schema: consumptionHistorySchema },
+  { name: 'purchaseHistory', schema: purchaseHistorySchema },
   { name: 'mealPlans', schema: mealPlanSchema },
   { name: 'images', schema: imageSchema },
 ];
@@ -82,6 +84,10 @@ async function createIndexes(db) {
     .createIndex({ householdId: 1, itemId: 1 });
   await db.collection('consumptionHistory').createIndex({ userId: 1 });
   await db.collection('consumptionHistory').createIndex({ consumptionType: 1 });
+
+  await db.collection('purchaseHistory').createIndex({ householdId: 1, purchasedAt: -1 });
+  await db.collection('purchaseHistory').createIndex({ itemId: 1, purchasedAt: -1 });
+  await db.collection('purchaseHistory').createIndex({ userId: 1 });
 
   await db.collection('mealPlans').createIndex({ householdId: 1, startDate: -1 });
 

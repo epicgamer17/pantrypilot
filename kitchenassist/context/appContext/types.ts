@@ -19,7 +19,7 @@ export interface AppContextType {
   updateFridgeItem: (item: Item) => void;
   removeFromFridge: (id: string, percentWasted: number) => void;
   consumeItem: (id: string, amount: number) => void;
-  cookRecipeFromFridge: (recipe: Recipe) => void;
+  cookRecipeFromFridge: (recipe: Recipe, servingsOverride?: number) => void;
 
   addToGroceryList: (
     name: string,
@@ -43,9 +43,11 @@ export interface AppContextType {
     id: string,
     updates: { name?: string; quantity?: number; unit?: string; aisle?: string },
   ) => void;
+  setAllGroceryItemsChecked: (checked: boolean) => void;
   clearPurchasedItems: () => void;
   addRecipe: (recipe: Recipe) => void;
   updateRecipe: (recipe: Recipe) => void;
+  deleteRecipe: (id: string) => void;
   calculateTotalWasteCost: () => number;
 }
 

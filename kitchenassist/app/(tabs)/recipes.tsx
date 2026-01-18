@@ -19,9 +19,11 @@ import {
 import { useApp } from '../../context/AppContext';
 import { Recipe, Ingredient } from '../../types';
 import { Card } from '../../components/ui/Card';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Spacing, Typography, BorderRadius, Shadows } from '../../constants/theme';
 import { fetchItemPrices, fetchItemsByIds, ensureItemByName } from '../../context/appContext/api';
 import { normalizeObjectId } from '../../context/appContext/utils';
+import { areUnitsCompatible, normalizeQuantity } from '../../utils/unitConversion';
 
 type SortOption = 'missing' | 'expiry' | 'cost' | 'az';
 type ViewMode = 'household' | 'public';
@@ -40,6 +42,7 @@ export default function RecipesScreen() {
         groceryList,
         addRecipe,
         updateRecipe,
+        deleteRecipe,
         addToGroceryList,
         addItemsToGroceryList,
         cookRecipeFromFridge,
@@ -56,6 +59,9 @@ export default function RecipesScreen() {
     // Cook Modal State
     const [cookModalVisible, setCookModalVisible] = useState(false);
     const [recipeToCook, setRecipeToCook] = useState<Recipe | null>(null);
+    const [cookServings, setCookServings] = useState('1');
+    const [maxCookServings, setMaxCookServings] = useState(1);
+    const [limitingIngredient, setLimitingIngredient] = useState<string | null>(null);
     const [detailsModalVisible, setDetailsModalVisible] = useState(false);
     const [recipeToView, setRecipeToView] = useState<Recipe | null>(null);
 
@@ -241,7 +247,9 @@ export default function RecipesScreen() {
         recipe.ingredients.forEach(ing => {
             // Calculate Cost
             if (ing.itemId && prices.has(ing.itemId)) {
-                totalCost += (prices.get(ing.itemId) || 0);
+                const unitPrice = prices.get(ing.itemId) || 0;
+                const qty = Number(ing.quantity ?? 1);
+                totalCost += unitPrice * (Number.isFinite(qty) ? qty : 1);
             }
 
             // Check Fridge
@@ -330,8 +338,95 @@ export default function RecipesScreen() {
     };
 
     const handleCookPress = (recipe: Recipe) => {
+        const baseServings = Number(recipe.servings) || 1;
+        let maxServings = Infinity;
+        let limitingName: string | null = null;
+        recipe.ingredients.forEach((ingredient) => {
+            const inFridge = fridgeItems.find(item =>
+                (ingredient.itemId && item.itemId && item.itemId === ingredient.itemId) ||
+                (item.name && ingredient.name && item.name.toLowerCase() === ingredient.name.toLowerCase())
+            );
+            if (!inFridge) {
+                maxServings = 0;
+                limitingName = ingredient.name ?? null;
+                return;
+            }
+            const recipeUnit = ingredient.unit ?? 'unit';
+            const fridgeUnit = inFridge.unit ?? 'unit';
+            if (!areUnitsCompatible(fridgeUnit, recipeUnit)) {
+                return;
+            }
+            const requiredBase = normalizeQuantity(Number(ingredient.quantity), recipeUnit);
+            const availableBase = normalizeQuantity(Number(inFridge.quantity), fridgeUnit);
+            if (!Number.isFinite(requiredBase) || requiredBase <= 0 || !Number.isFinite(availableBase)) {
+                return;
+            }
+            const possibleServings = (availableBase / requiredBase) * baseServings;
+            if (possibleServings < maxServings) {
+                maxServings = possibleServings;
+                limitingName = ingredient.name ?? null;
+            }
+        });
+        const resolvedMax = Number.isFinite(maxServings) ? Math.max(1, Math.floor(maxServings)) : baseServings;
+        const initialServings = Math.min(baseServings, resolvedMax);
         setRecipeToCook(recipe);
+        setMaxCookServings(resolvedMax);
+        setCookServings(String(initialServings));
+        setLimitingIngredient(limitingName);
         setCookModalVisible(true);
+    };
+
+    const handleGeminiCook = async () => {
+        if (!fridgeItems.length) {
+            Alert.alert('No items', 'Add items to your fridge first.');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_URL}/recipes/generate`, {
+                method: 'POST',
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({
+                    fridgeItems: fridgeItems.map((item) => ({
+                        name: item.name,
+                        category: item.category,
+                        quantity: item.quantity,
+                        unit: item.unit,
+                    })),
+                }),
+            });
+            if (!res.ok) {
+                return;
+            }
+            const data = await res.json();
+            const recipe = data?.recipe;
+            if (!recipe?.name || !Array.isArray(recipe.ingredients)) {
+                return;
+            }
+            const resolvedIngredients = await Promise.all(
+                recipe.ingredients.map(async (ingredient: Ingredient) => {
+                    const resolved = await ensureItemByName(
+                        API_URL,
+                        getAuthHeaders,
+                        userId,
+                        ingredient.name,
+                        'Recipe',
+                    );
+                    return {
+                        name: ingredient.name,
+                        quantity: Number(ingredient.quantity) || 1,
+                        unit: ingredient.unit || 'unit',
+                        itemId: resolved?.id ?? undefined,
+                    };
+                }),
+            );
+            setEditingRecipeId(null);
+            setNewRecipeName(recipe.name);
+            setNewIngredients(resolvedIngredients);
+            setIsPublicRecipe(false);
+            setModalVisible(true);
+        } catch (error) {
+            return;
+        }
     };
 
     const handleAddPublicRecipe = async (recipe: Recipe) => {
@@ -394,6 +489,17 @@ export default function RecipesScreen() {
         setModalVisible(true);
     };
 
+    const handleDeleteRecipe = (recipe: Recipe) => {
+        Alert.alert(
+            'Delete recipe?',
+            `Remove "${recipe.name}" from My Recipes?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: () => deleteRecipe(recipe.id) },
+            ],
+        );
+    };
+
     const openNewRecipeModal = () => {
         setEditingRecipeId(null);
         setNewRecipeName('');
@@ -404,7 +510,9 @@ export default function RecipesScreen() {
 
     const confirmCook = () => {
         if (recipeToCook) {
-            cookRecipeFromFridge(recipeToCook);
+            const parsed = Number(cookServings);
+            const servings = Number.isFinite(parsed) ? Math.max(1, Math.min(parsed, maxCookServings)) : 1;
+            cookRecipeFromFridge(recipeToCook, servings);
             setCookModalVisible(false);
             setRecipeToCook(null);
         }
@@ -486,9 +594,21 @@ export default function RecipesScreen() {
 
                 {/* Row 2: Centered Action Button */}
                 {viewMode === 'household' && (
-                    <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
-                        <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
-                    </TouchableOpacity>
+                    <View style={styles.centeredButtonRow}>
+                        <TouchableOpacity style={styles.centeredAddButton} onPress={openNewRecipeModal}>
+                            <Text style={styles.centeredAddButtonText}>+ New Recipe</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleGeminiCook} style={styles.geminiButton}>
+                            <LinearGradient
+                                colors={['#2f80ff', '#8a5cff']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                                style={styles.geminiGradient}
+                            >
+                                <Text style={styles.geminiButtonText}>Cook with Gemini</Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                    </View>
                 )}
 
                 {/* Row 3: Sort Controls */}
@@ -590,23 +710,28 @@ export default function RecipesScreen() {
                                                 </View>
                                             )}
                                         </View>
+                                        {isReady && (
+                                            <TouchableOpacity style={[styles.cookButton, { alignSelf: 'flex-start', marginTop: 8 }]} onPress={() => handleCookPress(item)}>
+                                                <Text style={styles.cookButtonText}>Cook</Text>
+                                            </TouchableOpacity>
+                                        )}
                                     </View>
                                 </TouchableOpacity>
 
-                                <View style={{ alignItems: 'flex-end', gap: 5 }}>
+                                <View style={styles.cardActions}>
                                     {viewMode === 'household' && (
                                         <TouchableOpacity onPress={() => handleEditPress(item)}>
                                             <Text style={{ fontSize: 10, color: Colors.light.textSecondary }}>Edit</Text>
                                         </TouchableOpacity>
                                     )}
+                                    {viewMode === 'household' && (
+                                        <TouchableOpacity onPress={() => handleDeleteRecipe(item)}>
+                                            <Text style={{ fontSize: 10, color: Colors.light.danger }}>Delete</Text>
+                                        </TouchableOpacity>
+                                    )}
                                     {viewMode === 'public' && (
                                         <TouchableOpacity onPress={() => handleAddPublicRecipe(item)}>
                                             <Text style={{ fontSize: 10, color: Colors.light.textSecondary }}>Add</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                    {isReady && (
-                                        <TouchableOpacity style={styles.cookButton} onPress={() => handleCookPress(item)}>
-                                            <Text style={styles.cookButtonText}>Cook</Text>
                                         </TouchableOpacity>
                                     )}
                                     <TouchableOpacity
@@ -773,6 +898,39 @@ export default function RecipesScreen() {
                         <Text style={{ color: Colors.light.textSecondary, marginVertical: 10 }}>
                             This will remove the ingredients from your fridge.
                         </Text>
+                        <Text style={Typography.label}>Servings made</Text>
+                        <View style={styles.cookServingsRow}>
+                            <TouchableOpacity
+                                style={styles.cookServingsBtn}
+                                onPress={() => {
+                                    const next = Math.max(1, Number(cookServings) - 1);
+                                    setCookServings(String(next));
+                                }}
+                            >
+                                <Text style={styles.cookServingsBtnText}>-</Text>
+                            </TouchableOpacity>
+                            <TextInput
+                                style={styles.cookServingsInput}
+                                keyboardType="numeric"
+                                value={cookServings}
+                                onChangeText={(value) => setCookServings(value.replace(/[^0-9.]/g, ''))}
+                            />
+                            <TouchableOpacity
+                                style={styles.cookServingsBtn}
+                                onPress={() => {
+                                    const next = Math.min(maxCookServings, Number(cookServings) + 1);
+                                    setCookServings(String(next));
+                                }}
+                            >
+                                <Text style={styles.cookServingsBtnText}>+</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.cookServingsHint}>Max: {maxCookServings}</Text>
+                        {limitingIngredient && (
+                            <Text style={styles.cookServingsHint}>
+                                Limited by: {limitingIngredient}
+                            </Text>
+                        )}
                         <View style={styles.modalActions}>
                             <TouchableOpacity onPress={() => setCookModalVisible(false)} style={styles.cancelBtn}>
                                 <Text style={styles.cancelText}>Cancel</Text>
@@ -870,6 +1028,28 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         fontSize: 16
     },
+    centeredButtonRow: {
+        alignItems: 'center',
+        gap: 8,
+        marginTop: Spacing.m,
+    },
+    geminiButton: {
+        width: '60%',
+        borderRadius: BorderRadius.l,
+        overflow: 'hidden',
+        ...Shadows.soft,
+    },
+    geminiGradient: {
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        borderRadius: BorderRadius.l,
+    },
+    geminiButtonText: {
+        color: 'white',
+        fontWeight: '700',
+        fontSize: 15,
+    },
 
     // Toggle Styles
     toggleContainer: { flexDirection: 'row', backgroundColor: Colors.light.secondary, borderRadius: BorderRadius.l, padding: 3 },
@@ -912,8 +1092,28 @@ const styles = StyleSheet.create({
     metaTag: { backgroundColor: Colors.light.background, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
     metaText: { fontSize: 11, fontWeight: '600', color: Colors.light.textSecondary },
 
+    cardActions: {
+        alignItems: 'flex-end',
+        gap: 8,
+        flexWrap: 'wrap',
+        maxWidth: 80,
+    },
     cookButton: { backgroundColor: Colors.light.success, paddingVertical: 8, paddingHorizontal: 12, borderRadius: BorderRadius.s },
     cookButtonText: { color: 'white', fontWeight: '600', fontSize: 12 },
+    cookServingsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+    cookServingsBtn: { backgroundColor: Colors.light.secondary, paddingVertical: 6, paddingHorizontal: 12, borderRadius: BorderRadius.s },
+    cookServingsBtnText: { fontSize: 18, fontWeight: '600', color: Colors.light.text },
+    cookServingsInput: {
+        borderWidth: 1,
+        borderColor: Colors.light.border,
+        borderRadius: BorderRadius.s,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        minWidth: 60,
+        textAlign: 'center',
+        color: Colors.light.text,
+    },
+    cookServingsHint: { ...Typography.caption, color: Colors.light.textSecondary, marginTop: 6 },
 
     // Modal Styles
     modalContainer: { flex: 1, padding: 30, paddingTop: 80, backgroundColor: Colors.light.card },

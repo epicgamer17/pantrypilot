@@ -604,6 +604,10 @@ router.patch(
     const { householdId, fridgeItemId } = req.params;
     const updates = req.body ?? {};
 
+    if (!ObjectId.isValid(householdId) || !ObjectId.isValid(fridgeItemId)) {
+      return res.status(400).json({ error: 'Invalid household or fridge item id.' });
+    }
+
     const allowed = [
       'quantity',
       'unit',
@@ -888,6 +892,94 @@ router.patch('/households/:householdId', async (req, res) => {
   }
 
   return res.json(updatedHousehold);
+});
+
+router.post('/households/:householdId/purchases', async (req, res) => {
+  const { householdId } = req.params;
+  const { items } = req.body ?? {};
+
+  if (!ObjectId.isValid(householdId)) {
+    return res.status(400).json({ error: 'Invalid household id.' });
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items array is required.' });
+  }
+
+  const db = req.app.locals.db;
+  const now = new Date();
+  const docs = items
+    .map((item) => {
+      if (!ObjectId.isValid(item.itemId)) return null;
+      const quantity = Number(item.quantity ?? 1);
+      const pricePerUnit = Number(item.pricePerUnit ?? 0);
+      const purchasedAt = item.purchasedAt ? new Date(item.purchasedAt) : now;
+      return omitUndefined({
+        householdId: new ObjectId(householdId),
+        itemId: new ObjectId(item.itemId),
+        userId: item.userId && ObjectId.isValid(item.userId) ? new ObjectId(item.userId) : undefined,
+        quantity: Number.isFinite(quantity) ? quantity : 1,
+        unit: item.unit || 'unit',
+        pricePerUnit: Number.isFinite(pricePerUnit) ? pricePerUnit : 0,
+        totalPrice:
+          Number.isFinite(quantity) && Number.isFinite(pricePerUnit)
+            ? quantity * pricePerUnit
+            : undefined,
+        storeName: item.storeName,
+        purchasedAt,
+        createdAt: now,
+      });
+    })
+    .filter(Boolean);
+
+  if (!docs.length) {
+    return res.status(400).json({ error: 'No valid items to record.' });
+  }
+
+  await db.collection('purchaseHistory').insertMany(docs);
+  return res.status(201).json({ recorded: docs.length });
+});
+
+router.get('/households/:householdId/purchases', async (req, res) => {
+  const { householdId } = req.params;
+  const { limit = '100' } = req.query ?? {};
+
+  if (!ObjectId.isValid(householdId)) {
+    return res.status(400).json({ error: 'Invalid household id.' });
+  }
+
+  const db = req.app.locals.db;
+  const maxResults = Number(limit);
+  const pipeline = [
+    { $match: { householdId: new ObjectId(householdId) } },
+    { $sort: { purchasedAt: -1 } },
+    { $limit: Number.isFinite(maxResults) ? maxResults : 100 },
+    {
+      $lookup: {
+        from: 'items',
+        localField: 'itemId',
+        foreignField: '_id',
+        as: 'item',
+      },
+    },
+    { $unwind: { path: '$item', preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        _id: 1,
+        itemId: 1,
+        name: '$item.name',
+        category: '$item.category',
+        quantity: 1,
+        unit: 1,
+        pricePerUnit: 1,
+        totalPrice: 1,
+        storeName: 1,
+        purchasedAt: 1,
+      },
+    },
+  ];
+
+  const results = await db.collection('purchaseHistory').aggregate(pipeline).toArray();
+  return res.json(results);
 });
 
 module.exports = router;

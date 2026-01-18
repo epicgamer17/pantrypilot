@@ -370,6 +370,27 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             } else {
                 console.error('Failed to fetch household info');
             }
+
+            const purchasesRes = await fetch(
+                `${API_URL}/households/${householdId}/purchases?limit=200`,
+                { headers: getAuthHeaders() },
+            );
+            if (purchasesRes.ok) {
+                const data = await purchasesRes.json();
+                const history = Array.isArray(data)
+                    ? data.map((entry: any) => ({
+                        id: String(entry._id ?? entry.itemId),
+                        name: entry.name || 'Item',
+                        category: entry.category || 'Other',
+                        price: entry.pricePerUnit ?? 0,
+                        date: entry.purchasedAt,
+                        store: entry.storeName || 'Store',
+                        quantity: entry.quantity ?? 1,
+                        unit: entry.unit ?? 'unit',
+                    }))
+                    : [];
+                setPurchaseHistory(history);
+            }
         } catch (error) {
             console.error('[AppContext] Error refreshing data:', error);
         }
@@ -401,6 +422,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }, [userId, householdId]);
 
     useEffect(() => {
+        if (purchaseHistory.length || !fridgeItems.length) return;
         const history: PurchaseRecord[] = [];
 
         const mapToRecord = (item: Item): PurchaseRecord => ({
@@ -414,26 +436,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             unit: item.unit
         });
 
-        // 1. Add Active Fridge Items (Current Inventory)
         fridgeItems.forEach(item => {
-            // Only add if it has a price, otherwise it skews analytics
             if (item.purchasePrice) {
                 history.push(mapToRecord(item));
             }
         });
 
-        // 2. Add Recently Depleted Items (History)
         recentlyDepletedItems.forEach(item => {
             if (item.purchasePrice) {
                 history.push(mapToRecord(item));
             }
         });
 
-        // Sort by date (Newest first)
         history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
         setPurchaseHistory(history);
-    }, [fridgeItems, recentlyDepletedItems]);
+    }, [fridgeItems, recentlyDepletedItems, purchaseHistory.length]);
 
     // -------------------------------------------------------------------------
     // 2. FRIDGE ACTIONS
@@ -454,6 +471,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         fridgeItems,
         setFridgeItems,
         setRecentlyDepletedItems,
+        fetchItemsByIds,
         apiUrl: API_URL,
         syncHouseholdId,
     });
@@ -470,6 +488,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         addItemsToGroceryList,
         toggleGroceryItem,
         updateGroceryItem,
+        setAllGroceryItemsChecked,
         clearPurchasedItems,
     } = createGroceryActions({
         userId,
@@ -490,7 +509,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     // 4. RECIPE ACTIONS
     // -------------------------------------------------------------------------
 
-    const { addRecipe, updateRecipe } = createRecipeActions({
+    const { addRecipe, updateRecipe, deleteRecipe } = createRecipeActions({
         userId,
         householdId,
         getAuthHeaders,
@@ -538,9 +557,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                 addItemsToGroceryList,
                 toggleGroceryItem,
                 updateGroceryItem,
+                setAllGroceryItemsChecked,
                 clearPurchasedItems,
                 addRecipe,
                 updateRecipe,
+                deleteRecipe,
                 calculateTotalWasteCost,
             }}
         >

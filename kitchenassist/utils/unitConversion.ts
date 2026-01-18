@@ -7,7 +7,9 @@ export const getUnitType = (unit: string): UnitType => {
     const u = unit.toLowerCase().trim();
     if (['g', 'kg', 'oz', 'lb', 'mg'].includes(u)) return 'mass';
     if (['ml', 'l', 'cup', 'tbsp', 'tsp', 'fl oz', 'pint', 'gallon'].includes(u)) return 'volume';
-    if (['unit', 'item', 'pcs', 'each'].includes(u)) return 'discrete';
+    if (['unit', 'item', 'pcs', 'each', 'ea', 'clove', 'cloves', 'leaf', 'leaves', 'sprig', 'sprigs', 'serving', 'servings'].includes(u)) {
+        return 'discrete';
+    }
     return 'unknown';
 };
 
@@ -43,6 +45,34 @@ export const normalizeQuantity = (qty: number, unit: string): number => {
     if (u === 'fl oz') return qty * 29.5735;
     if (u === 'pint') return qty * 473.176;
     if (u === 'gallon') return qty * 3785.41;
+
+    // DISCRETE -> Base: Unit
+    if (['ea', 'each', 'clove', 'cloves', 'leaf', 'leaves', 'sprig', 'sprigs', 'serving', 'servings'].includes(u)) {
+        return qty;
+    }
+    return qty;
+};
+
+// 4. Convert from base unit back to the requested unit.
+export const denormalizeQuantity = (qty: number, unit: string): number => {
+    const u = unit.toLowerCase().trim();
+
+    // MASS -> Base: Grams (g)
+    if (u === 'g') return qty;
+    if (u === 'kg') return qty / 1000;
+    if (u === 'mg') return qty * 1000;
+    if (u === 'oz') return qty / 28.3495;
+    if (u === 'lb') return qty / 453.592;
+
+    // VOLUME -> Base: Milliliters (ml)
+    if (u === 'ml') return qty;
+    if (u === 'l') return qty / 1000;
+    if (u === 'tsp') return qty / 4.92892;
+    if (u === 'tbsp') return qty / 14.7868;
+    if (u === 'cup') return qty / 236.588;
+    if (u === 'fl oz') return qty / 29.5735;
+    if (u === 'pint') return qty / 473.176;
+    if (u === 'gallon') return qty / 3785.41;
 
     // DISCRETE -> Base: Unit
     return qty;
